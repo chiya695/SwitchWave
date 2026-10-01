@@ -78,28 +78,16 @@ inline int move(std::string_view text, int byte_position, int characters) {
     return static_cast<int>(offset);
 }
 
-inline bool apply_keyboard_edit(std::string &text, int &cursor, std::string_view reset,
-        int anchor, std::string_view input, int input_cursor) {
-    if (!valid(input) || anchor < 0 || static_cast<std::size_t>(anchor) > reset.size() || input == reset)
+inline bool replace_keyboard_window(std::string &text, int &cursor, int start,
+        std::string_view previous, std::string_view input, int input_cursor) {
+    if (!valid(input) || start < 0 || static_cast<std::size_t>(start) > text.size())
         return false;
-
-    std::size_t prefix = 0, suffix = 0;
-    auto prefix_limit = static_cast<std::size_t>(std::min(anchor, byte_offset(input, input_cursor)));
-    while (prefix < prefix_limit && prefix < input.size() &&
-            reset[prefix] == input[prefix])
-        ++prefix;
-    while (suffix < reset.size() - anchor && suffix < input.size() - prefix &&
-            reset[reset.size() - suffix - 1] == input[input.size() - suffix - 1])
-        ++suffix;
-
-    auto start = move(text, cursor, -static_cast<int>(anchor - prefix));
-    auto end = move(text, cursor, static_cast<int>(reset.size() - anchor - suffix));
-    auto inserted = input.substr(prefix, input.size() - prefix - suffix);
-    if (text.size() - (end - start) + inserted.size() + 1 > text.capacity())
+    if (previous.size() > text.size() - start ||
+            std::string_view(text).substr(start, previous.size()) != previous ||
+            text.size() - previous.size() + input.size() + 1 > text.capacity())
         return false;
-
-    text.replace(start, end - start, inserted);
-    cursor = start + byte_offset(inserted, std::max(0, input_cursor - static_cast<int>(prefix)));
+    text.replace(start, previous.size(), input);
+    cursor = start + byte_offset(input, input_cursor);
     return true;
 }
 

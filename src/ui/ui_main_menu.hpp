@@ -104,12 +104,11 @@ class ConfigEditor final: public Widget {
 
         Context &context;
 
-        constexpr static std::string_view swkbd_string_reset = "      ";
-        constexpr static std::size_t      swkbd_cursor_reset = 3;
-        static_assert(swkbd_string_reset.length() % 2 == 0 && swkbd_string_reset.length() / 2 == swkbd_cursor_reset);
-
         std::string      config_text;
         int              cursor_pos = 0;
+        std::string      keyboard_text;
+        int              keyboard_start = 0;
+        bool             keyboard_composing = false;
 
         std::string_view config_path;
 

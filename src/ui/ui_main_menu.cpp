@@ -456,28 +456,33 @@ ConfigEditor::~ConfigEditor() {
 
 void ConfigEditor::install_swkbd_callbacks(SwkbdInline *swkbd) {
     swkbdInlineSetChangedStringCallback(ImGui::nx::getSwkbd(), +[](const char *str, SwkbdChangedStringArg *arg) {
-        if (std::string_view(str) == ConfigEditor::swkbd_string_reset)
+        auto changed = std::string_view(str) != s_this->keyboard_text;
+        s_this->keyboard_composing = arg->dicStartCursorPos >= 0 && arg->dicEndCursorPos >= 0;
+        if (!utf8::replace_keyboard_window(s_this->config_text, s_this->cursor_pos,
+                s_this->keyboard_start, s_this->keyboard_text, str, arg->cursorPos)) {
+            s_this->reset_swkbd_state(ImGui::nx::getSwkbd());
             return;
-
-        SW_SCOPEGUARD([] { s_this->reset_swkbd_state(ImGui::nx::getSwkbd()); });
-
-        if (!utf8::apply_keyboard_edit(s_this->config_text, s_this->cursor_pos,
-                ConfigEditor::swkbd_string_reset, ConfigEditor::swkbd_cursor_reset, str, arg->cursorPos))
-            return;
+        }
+        s_this->keyboard_text = str;
         s_this->want_cursor_update  = true;
-
-        s_this->has_unsaved_changes = true;
+        s_this->has_unsaved_changes |= changed;
+        if (!s_this->keyboard_composing && (arg->stringLen > 384 ||
+                (arg->cursorPos == 0 && s_this->keyboard_start > 0) ||
+                (arg->cursorPos == static_cast<int>(arg->stringLen) &&
+                    static_cast<std::size_t>(s_this->cursor_pos) < s_this->config_text.size())))
+            s_this->reset_swkbd_state(ImGui::nx::getSwkbd());
     });
 
     swkbdInlineSetMovedCursorCallback(ImGui::nx::getSwkbd(), +[](const char *str, SwkbdMovedCursorArg *arg) {
-        if (arg->cursorPos == ConfigEditor::swkbd_cursor_reset)
+        auto cursor_pos = s_this->keyboard_start + utf8::byte_offset(s_this->keyboard_text, arg->cursorPos);
+        if (cursor_pos == s_this->cursor_pos)
             return;
-
-        SW_SCOPEGUARD([] { s_this->reset_swkbd_state(ImGui::nx::getSwkbd()); });
-
-        s_this->cursor_pos = utf8::move(s_this->config_text, s_this->cursor_pos,
-            arg->cursorPos - static_cast<int>(ConfigEditor::swkbd_cursor_reset));
+        s_this->cursor_pos = cursor_pos;
         s_this->want_cursor_update = true;
+        if (!s_this->keyboard_composing && ((arg->cursorPos == 0 && cursor_pos > 0) ||
+                (arg->cursorPos == static_cast<int>(arg->stringLen) &&
+                    static_cast<std::size_t>(cursor_pos) < s_this->config_text.size())))
+            s_this->reset_swkbd_state(ImGui::nx::getSwkbd());
     });
 
     swkbdInlineSetDecidedEnterCallback(ImGui::nx::getSwkbd(), +[](const char *str, SwkbdDecidedEnterArg *arg) {
@@ -495,8 +500,13 @@ void ConfigEditor::reset_swkbd_state(SwkbdInline *swkbd) {
     swkbdInlineSetKeytopBgAlpha(swkbd, 1.0f);
     swkbdInlineSetFooterBgAlpha(swkbd, 1.0f);
 
-    swkbdInlineSetInputText(swkbd, ConfigEditor::swkbd_string_reset.data());
-    swkbdInlineSetCursorPos(swkbd, ConfigEditor::swkbd_cursor_reset);
+    this->keyboard_start = utf8::move(this->config_text, this->cursor_pos, -64);
+    auto end = utf8::move(this->config_text, this->cursor_pos, 64);
+    this->keyboard_text = this->config_text.substr(this->keyboard_start, end - this->keyboard_start);
+    this->keyboard_composing = false;
+    swkbdInlineSetInputText(swkbd, this->keyboard_text.c_str());
+    swkbdInlineSetCursorPos(swkbd, utf8::utf16_offset(this->keyboard_text,
+        this->cursor_pos - this->keyboard_start));
 };
 
 bool ConfigEditor::update_state(PadState &pad, HidTouchScreenState &touch) {
@@ -595,6 +605,9 @@ void ConfigEditor::render() {
             if (self->want_cursor_update) {
                 data->CursorPos = self->cursor_pos;
                 self->want_cursor_update = false;
+            } else if (data->CursorPos != self->cursor_pos && ImGui::nx::isSwkbdVisible()) {
+                self->cursor_pos = data->CursorPos;
+                self->reset_swkbd_state(ImGui::nx::getSwkbd());
             }
 
             self->cursor_pos = data->CursorPos;
