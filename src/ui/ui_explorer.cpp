@@ -96,7 +96,7 @@ bool Explorer::update_state(PadState &pad, HidTouchScreenState &touch) {
                 if (S_ISDIR(st.st_mode))
                     this->entries.emplace_back(fs::Node{fs::Node::Type::Directory, std::move(name), 0, path.base()});
                 else
-                    this->entries.emplace_back(fs::Node{fs::Node::Type::File, std::move(name), std::size_t(st.st_size), path.base()});
+                    this->entries.emplace_back(fs::Node{fs::Node::Type::File, std::move(name), std::size_t(st.st_size), path.base(), S_ISREG(st.st_mode)});
             }
 
             if (this->context.cur_fs->type != fs::Filesystem::Type::Recent) {
@@ -244,7 +244,7 @@ void Explorer::render() {
 
     bool can_delete = this->allow_file_deletion && this->context.cur_fs && this->context.cur_fs->supports_file_deletion() &&
         this->cur_focused_entry < this->entries.size() &&
-        this->entries[this->cur_focused_entry].type == fs::Node::Type::File;
+        this->entries[this->cur_focused_entry].is_regular_file;
     ImGui::BeginDisabled(!can_delete);
     bool want_delete = ImGui::Button(i18n::label("Delete file"));
     ImGui::EndDisabled();

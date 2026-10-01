@@ -290,6 +290,16 @@ int SmbFs::smb_unlink(struct _reent *r, const char *name) {
         return -1;
     }
     auto internal_path = priv->translate_path(name);
+    std::array<char, PATH_MAX> link_target;
+    auto link_result = ::smb2_readlink(priv->smb_ctx, internal_path.c_str() + 1, link_target.data(), link_target.size());
+    if (link_result >= 0) {
+        __errno_r(r) = EINVAL;
+        return -1;
+    }
+    if (link_result != -EINVAL) {
+        __errno_r(r) = -link_result;
+        return -1;
+    }
     struct smb2_stat_64 status;
     if (auto result = ::smb2_stat(priv->smb_ctx, internal_path.c_str() + 1, &status); result < 0) {
         __errno_r(r) = -result;

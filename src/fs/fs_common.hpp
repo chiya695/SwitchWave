@@ -136,6 +136,7 @@ struct Node {
 
     std::size_t size = 0;
     std::string path;
+    bool is_regular_file = false;
 };
 
 class Filesystem {
