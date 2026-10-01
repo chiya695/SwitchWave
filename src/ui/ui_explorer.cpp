@@ -178,7 +178,8 @@ void Explorer::render() {
         want_explore_backward |= ImGui::Button(buttonstr.c_str(), ImVec2(-1, 0));
     }
 
-    auto reserved_height = (this->allow_file_deletion ? 3 : 1) *
+    bool show_recent_controls = this->context.cur_fs && this->context.cur_fs->type == fs::Filesystem::Type::Recent;
+    auto reserved_height = ((this->allow_file_deletion || show_recent_controls) ? 3 : 1) *
         (ImGui::GetStyle().ItemSpacing.y + ImGui::GetTextLineHeightWithSpacing());
 
     if (ImGui::BeginListBox("##fsentries", ImVec2(-1, -reserved_height))) {
