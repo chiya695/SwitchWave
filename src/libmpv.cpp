@@ -69,6 +69,7 @@ int LibmpvController::initialize() {
     MPV_CALL(mpv_set_option_string(this->mpv, "config", "yes"));
     MPV_CALL(mpv_set_option_string(this->mpv, "config-dir", LibmpvController::MpvDirectory.data()));
     MPV_CALL(mpv_set_option_string(this->mpv, "user-agent", "SwitchWave/1.0"));
+    MPV_CALL(mpv_set_option_string(this->mpv, "sub-codepage", "gb18030"));
 
     apply_system_http_proxy(this->mpv);
 

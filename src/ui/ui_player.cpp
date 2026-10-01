@@ -28,6 +28,7 @@
 #include <imgui_deko3d.h>
 
 #include "utils.hpp"
+#include "utf8.hpp"
 #include "fs/fs_http.hpp"
 #include "ui/ui_explorer.hpp"
 
@@ -1630,18 +1631,24 @@ Console::Console(Renderer &renderer, LibmpvController &lmpv): Widget(renderer), 
     swkbdInlineSetFooterBgAlpha(ImGui::nx::getSwkbd(), 0.75f);
 
     swkbdInlineSetChangedStringCallback(ImGui::nx::getSwkbd(), +[](const char *str, SwkbdChangedStringArg *arg) {
-        if (arg->stringLen <= s_this->input_text.capacity())
-            s_this->input_text = str;
+        if (std::strlen(str) + 1 > s_this->input_text.capacity() || !utf8::valid(str)) {
+            swkbdInlineSetInputText(ImGui::nx::getSwkbd(), s_this->input_text.c_str());
+            swkbdInlineSetCursorPos(ImGui::nx::getSwkbd(), utf8::utf16_offset(
+                s_this->input_text, s_this->cursor_pos));
+            return;
+        }
+        s_this->input_text = str;
 
-        s_this->cursor_pos         = arg->cursorPos;
+        s_this->cursor_pos         = utf8::byte_offset(str, arg->cursorPos);
         s_this->want_cursor_update = true;
     });
 
     swkbdInlineSetMovedCursorCallback(ImGui::nx::getSwkbd(), +[](const char *str, SwkbdMovedCursorArg *arg) {
-        if (arg->cursorPos == s_this->cursor_pos)
+        auto cursor_pos = utf8::byte_offset(str, arg->cursorPos);
+        if (cursor_pos == s_this->cursor_pos)
             return;
 
-        s_this->cursor_pos         = arg->cursorPos;
+        s_this->cursor_pos         = cursor_pos;
         s_this->want_cursor_update = true;
     });
 
@@ -1693,8 +1700,8 @@ void Console::set_text(const std::string_view text) {
 
     this->input_text = text;
 
-    swkbdInlineSetInputText(ImGui::nx::getSwkbd(), text.data());
-    swkbdInlineSetCursorPos(ImGui::nx::getSwkbd(), text.length());
+    swkbdInlineSetInputText(ImGui::nx::getSwkbd(), this->input_text.c_str());
+    swkbdInlineSetCursorPos(ImGui::nx::getSwkbd(), utf8::utf16_offset(text, text.length()));
     swkbdInlineUpdate(ImGui::nx::getSwkbd(), nullptr);
 }
 
@@ -1726,7 +1733,7 @@ void Console::render() {
             }
 
             if (data->CursorPos != self->cursor_pos)
-                swkbdInlineSetCursorPos(ImGui::nx::getSwkbd(), data->CursorPos);
+                swkbdInlineSetCursorPos(ImGui::nx::getSwkbd(), utf8::utf16_offset(data->Buf, data->CursorPos));
 
             self->cursor_pos = data->CursorPos;
             data->ClearSelection();

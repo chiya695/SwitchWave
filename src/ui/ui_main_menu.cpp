@@ -41,6 +41,7 @@ extern "C" {
 #include <ass/ass.h>
 
 #include "utils.hpp"
+#include "utf8.hpp"
 #include "fs/fs_recent.hpp"
 #include "fs/fs_http.hpp"
 
@@ -455,29 +456,14 @@ ConfigEditor::~ConfigEditor() {
 
 void ConfigEditor::install_swkbd_callbacks(SwkbdInline *swkbd) {
     swkbdInlineSetChangedStringCallback(ImGui::nx::getSwkbd(), +[](const char *str, SwkbdChangedStringArg *arg) {
-        constexpr static auto reset_length = ConfigEditor::swkbd_string_reset.length();
-        if (arg->stringLen == reset_length)
+        if (std::string_view(str) == ConfigEditor::swkbd_string_reset)
             return;
 
         SW_SCOPEGUARD([] { s_this->reset_swkbd_state(ImGui::nx::getSwkbd()); });
 
-        int delta = arg->stringLen - reset_length;
-        if ((s_this->config_text.length() + delta + 1 > s_this->config_text.capacity()) ||
-                (delta < 0 && s_this->cursor_pos == 0))
+        if (!utf8::apply_keyboard_edit(s_this->config_text, s_this->cursor_pos,
+                ConfigEditor::swkbd_string_reset, ConfigEditor::swkbd_cursor_reset, str, arg->cursorPos))
             return;
-
-        if (delta > 0)
-            s_this->config_text.resize(s_this->config_text.length() + delta);
-
-        std::memmove(s_this->config_text.data() + s_this->cursor_pos + delta, s_this->config_text.data() + s_this->cursor_pos,
-            s_this->config_text.length() - s_this->cursor_pos + 1);
-        if (delta > 0)
-            std::memcpy(s_this->config_text.data() + s_this->cursor_pos, str + ConfigEditor::swkbd_cursor_reset, delta);
-
-        if (delta < 0)
-            s_this->config_text.resize(s_this->config_text.length() + delta);
-
-        s_this->cursor_pos         += delta;
         s_this->want_cursor_update  = true;
 
         s_this->has_unsaved_changes = true;
@@ -489,8 +475,8 @@ void ConfigEditor::install_swkbd_callbacks(SwkbdInline *swkbd) {
 
         SW_SCOPEGUARD([] { s_this->reset_swkbd_state(ImGui::nx::getSwkbd()); });
 
-        s_this->cursor_pos        += arg->cursorPos - ConfigEditor::swkbd_cursor_reset;
-        s_this->cursor_pos         = std::max(0, s_this->cursor_pos);
+        s_this->cursor_pos = utf8::move(s_this->config_text, s_this->cursor_pos,
+            arg->cursorPos - ConfigEditor::swkbd_cursor_reset);
         s_this->want_cursor_update = true;
     });
 
@@ -693,18 +679,26 @@ SettingsEditor::~SettingsEditor() {
 
 void SettingsEditor::install_swkbd_callbacks(SwkbdInline *swkbd) {
     swkbdInlineSetChangedStringCallback(ImGui::nx::getSwkbd(), +[](const char *str, SwkbdChangedStringArg *arg) {
-        if (arg->stringLen <= s_this->cur_edited_string->capacity())
-            *s_this->cur_edited_string = str;
+        if (!s_this->cur_edited_string)
+            return;
+        if (std::strlen(str) > s_this->cur_edited_string->capacity() || !utf8::valid(str)) {
+            swkbdInlineSetInputText(ImGui::nx::getSwkbd(), s_this->cur_edited_string->c_str());
+            swkbdInlineSetCursorPos(ImGui::nx::getSwkbd(), utf8::utf16_offset(
+                s_this->cur_edited_string->c_str(), s_this->cursor_pos));
+            return;
+        }
+        *s_this->cur_edited_string = str;
 
-        s_this->cursor_pos         = arg->cursorPos;
+        s_this->cursor_pos         = utf8::byte_offset(str, arg->cursorPos);
         s_this->want_cursor_update = true;
     });
 
     swkbdInlineSetMovedCursorCallback(ImGui::nx::getSwkbd(), +[](const char *str, SwkbdMovedCursorArg *arg) {
-        if (arg->cursorPos == s_this->cursor_pos)
+        auto cursor_pos = utf8::byte_offset(str, arg->cursorPos);
+        if (cursor_pos == s_this->cursor_pos)
             return;
 
-        s_this->cursor_pos         = arg->cursorPos;
+        s_this->cursor_pos         = cursor_pos;
         s_this->want_cursor_update = true;
     });
 
@@ -781,7 +775,7 @@ void SettingsEditor::render() {
         ImGui::PushItemWidth(-1);
         SW_SCOPEGUARD([] { ImGui::PopItemWidth(); });
 
-        ImGui::InputText(make_id(i, id.data()), str.data(), str.capacity(),
+        ImGui::InputText(make_id(i, id.data()), str.data(), str.capacity() + 1,
             flags | ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_CallbackAlways,
             +[](ImGuiInputTextCallbackData *data) -> int {
                 auto *self = static_cast<SettingsEditor *>(data->UserData);
@@ -792,7 +786,7 @@ void SettingsEditor::render() {
                 }
 
                 if (data->CursorPos != self->cursor_pos)
-                    swkbdInlineSetCursorPos(ImGui::nx::getSwkbd(), data->CursorPos);
+                    swkbdInlineSetCursorPos(ImGui::nx::getSwkbd(), utf8::utf16_offset(data->Buf, data->CursorPos));
 
                 self->cursor_pos = data->CursorPos;
                 data->ClearSelection();

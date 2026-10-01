@@ -1,0 +1,27 @@
+pkgname=switch-libiconv
+pkgver=1.18
+pkgrel=1
+pkgdesc='Character encoding conversion library for Nintendo Switch'
+arch=('any')
+url='https://www.gnu.org/software/libiconv/'
+license=('LGPL-2.1-or-later' 'GPL-3.0-or-later')
+options=(!strip libtool staticlibs)
+makedepends=('dkp-toolchain-vars')
+source=("https://ftp.gnu.org/pub/gnu/libiconv/libiconv-${pkgver}.tar.gz")
+sha256sums=('3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8')
+
+build() {
+    cd "libiconv-${pkgver}"
+    source /opt/devkitpro/switchvars.sh
+    ./configure --prefix="$PORTLIBS_PREFIX" --host=aarch64-none-elf \
+        --disable-shared --enable-static --disable-nls
+    make
+}
+
+package() {
+    cd "libiconv-${pkgver}"
+    source /opt/devkitpro/switchvars.sh
+    make DESTDIR="$pkgdir" install
+    install -Dm644 COPYING.LIB "$pkgdir/$PORTLIBS_PREFIX/licenses/$pkgname/COPYING.LIB"
+    install -Dm644 COPYING "$pkgdir/$PORTLIBS_PREFIX/licenses/$pkgname/COPYING"
+}

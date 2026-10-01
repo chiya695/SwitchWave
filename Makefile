@@ -24,7 +24,7 @@ FFMPEG_CONFIG           :=  --enable-asm \
                             --enable-pic --disable-autodetect --disable-runtime-cpudetect --disable-debug
 
 MPV_CONFIG              :=  --enable-libmpv-static --disable-libmpv-shared --disable-manpage-build \
-                            --disable-cplayer --disable-iconv --disable-lua \
+                            --disable-cplayer --enable-iconv --disable-lua \
 							--disable-sdl2 --disable-gl --disable-plain-gl --enable-hos-audio --enable-deko3d
 
 TOPDIR                  ?=  $(CURDIR)

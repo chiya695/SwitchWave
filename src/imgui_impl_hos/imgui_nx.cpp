@@ -30,8 +30,10 @@
 #include "imgui.h"
 
 #include "../imgui/imgui_internal.h"
+#include "../shared_fonts.hpp"
 
 #include <chrono>
+#include <algorithm>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -59,6 +61,8 @@ SwkbdInline s_swkbd;
 SwkbdAppearArg s_swkbdAppearArgs;
 SwkbdRect s_swkbdTouchRect;
 bool s_swkbdShown = false;
+
+ImVector<ImWchar> s_fontRanges;
 
 /// \brief System font glyph ranges
 ImWchar const nxFontRanges[] = {
@@ -1320,7 +1324,7 @@ bool ImGui::nx::init ()
     rc = swkbdInlineCreate(&s_swkbd);
     if (R_FAILED(rc))
         return false;
-    swkbdInlineSetUtf8Mode(&s_swkbd, true);
+    swkbdInlineSetUtf8Mode(&s_swkbd, false);
 
     rc = swkbdInlineLaunchForLibraryApplet(&s_swkbd, SwkbdInlineMode_AppletDisplay, 0);
     if (R_FAILED(rc))
@@ -1339,8 +1343,41 @@ bool ImGui::nx::init ()
     s32 numFonts = 0;
     rc           = plGetSharedFont (languageCode, fonts.data (), fonts.size (), &numFonts);
     if (R_FAILED (rc))
+        fonts.clear ();
+    else
+        fonts.resize (numFonts);
+
+    for (auto const &sharedFont : sw::SharedFonts)
+    {
+        if (std::any_of (fonts.begin (), fonts.end (), [&](auto const &font) {
+                return font.type == sharedFont.type;
+            }))
+            continue;
+
+        PlFontData font;
+        rc = plGetSharedFontByType (&font, sharedFont.type);
+        if (R_SUCCEEDED (rc))
+            fonts.push_back (font);
+        else
+            std::fprintf (stderr, "Failed to load shared font %u: %#x\n", sharedFont.type, rc);
+    }
+
+    if (fonts.empty ())
+    {
+        plExit ();
         return false;
-    fonts.resize (numFonts);
+    }
+
+    static ImWchar const chineseRanges[] = {
+        0x2e80, 0x2fff, 0x3000, 0x303f, 0x3100, 0x312f,
+        0x31a0, 0x31bf, 0x3400, 0x4dbf, 0x4e00, 0x9fff,
+        0xf900, 0xfaff, 0xfe10, 0xfe1f, 0xfe30, 0xfe4f,
+        0xff00, 0xffef, 0,
+    };
+    ImFontGlyphRangesBuilder ranges;
+    ranges.AddRanges (nxFontRanges);
+    ranges.AddRanges (chineseRanges);
+    ranges.BuildRanges (&s_fontRanges);
 
     // add fonts
     ImFontConfig config;
@@ -1348,15 +1385,17 @@ bool ImGui::nx::init ()
     config.FontDataOwnedByAtlas = false;
     for (auto const &font : fonts)
     {
-        io.Fonts->AddFontFromMemoryTTF (font.address, font.size, 24.0f, &config, nxFontRanges);
+        io.Fonts->AddFontFromMemoryTTF (font.address, font.size, 24.0f, &config, s_fontRanges.Data);
         config.MergeMode = true;
     }
 
     // build font atlas
     io.Fonts->Flags |= ImFontAtlasFlags_NoPowerOfTwoHeight | ImFontAtlasFlags_NoMouseCursors;
-    io.Fonts->Build ();
+    auto const built = io.Fonts->Build ();
 
     plExit();
+    if (!built)
+        return false;
 
     if (auto rc = setsysGetColorSetId(&s_theme); R_FAILED(rc)) {
         std::printf("Failed to query global theme: %#x\n", rc);

@@ -32,6 +32,17 @@ A hardware-accelerated media player for the Nintendo Switch, built on mpv and FF
 - Network shares can be configured through the app, as can mpv settings via the built-in editor (refer to the [manual](https://mpv.io/manual/master/))
 - Most relevant runtime parameters can be dynamically adjusted during playback through the menu, or failing that, the console ([manual](https://mpv.io/manual/master/#console))
 
+## Chinese text support (this fork)
+- Simplified and Traditional Chinese filenames, metadata, network share names and console text use the Switch shared fonts, regardless of the system language.
+- CJK characters in the Unicode BMP are requested from the font atlas, including Extension A, punctuation and Bopomofo. Actual coverage depends on the fonts installed on the console; supplementary-plane ideographs and arbitrary emoji are not guaranteed.
+- The configuration editor, network settings and console convert keyboard UTF-16 cursor positions to UTF-8 byte offsets. Chinese insertion, deletion and cursor movement keep complete character boundaries.
+- At startup, missing shared fonts are cached locally in `sdmc:/switch/SwitchWave/fonts/`. A Chinese fallback `subfont.ttf` is created only if one does not already exist; user-provided fallback fonts are preserved. No Nintendo font files are distributed by this repository.
+- The locally cached `subfont.ttf` is used as mpv/libass's fallback font. Exact ASS font matches and embedded fonts still take precedence.
+- mpv is built with libiconv. Valid UTF-8 subtitles remain UTF-8; other text subtitles default to GB18030 (including GBK). For Big5 subtitles, put `sub-codepage=big5` in `mpv.conf`. Encoding cannot recover characters already replaced with literal `?` upstream.
+- This is text-rendering/input support, not a translation of the English menus. Existing audio/subtitle language preferences are not changed.
+
+See [the Chinese analysis and device checklist](docs/chinese-support.md) for architecture, root causes and limitations.
+
 ## Building
 
 ### Docker (recommended)
@@ -50,6 +61,7 @@ GIMP_VERSION=3 ./build-docker.sh
 - Install the following packages: `switch-bzip2`, `switch-dav1d`, `switch-freetype`, `switch-glm`, `switch-harfbuzz`, `switch-libarchive`, `switch-libass`, `switch-libfribidi`, `switch-libjpeg-turbo`, `switch-libpng`, `switch-libwebp`, `switch-curl`, `switch-libssh2`, `switch-mbedtls`, `switch-ntfs-3g` and `switch-lwext4`. In addition, the following build dependencies are required: `switch-pkg-config`, `dkp-meson-scripts`, `dkp-toolchain-vars`, and [GIMP](https://www.gimp.org/) (2 or 3).
 - Compile and install a GPL build of [libusbhsfs](https://github.com/DarkMatterCore/libusbhsfs).
 - Compile and install [libsmb2](misc/libsmb2/) and [libnfs](misc/libnfs/).
+- Compile and install [libiconv](misc/libiconv/) before configuring mpv. The supplied `PKGBUILD` targets the devkitPro environment; Docker performs this step automatically.
 - Configure, compile and install FFmpeg: `make configure-ffmpeg && make build-ffmpeg -j$(nproc)`.
 - Configure, compile and install libuam: `make configure-uam && make build-uam`.
 - Configure, compile and install mpv: `make configure-mpv && make build-mpv`.

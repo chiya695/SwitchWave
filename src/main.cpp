@@ -34,6 +34,7 @@
 #include "render.hpp"
 #include "waves.hpp"
 #include "context.hpp"
+#include "shared_fonts.hpp"
 #include "ui/ui_main_menu.hpp"
 #include "ui/ui_player.hpp"
 #include "fs/fs_common.hpp"
@@ -113,10 +114,6 @@ void mpv_presetup() {
     auto lk = std::scoped_lock(g_setup_mtx);
 
     auto fonts_dir = sw::fs::Path(sw::LibmpvController::MpvDirectory) / "fonts";
-    auto font_file = fonts_dir / "nintendo_udsg-r_std_003.ttf";
-
-    if (std::filesystem::exists(font_file))
-        return;
 
     if (!std::filesystem::exists(fonts_dir))
         std::filesystem::create_directories(fonts_dir);
@@ -126,18 +123,49 @@ void mpv_presetup() {
 
     SW_SCOPEGUARD([] { plExit(); });
 
-    PlFontData font;
-    if (auto rc = plGetSharedFontByType(&font, PlSharedFontType_Standard); R_FAILED(rc))
-        return;
+    std::optional<PlFontData> default_font;
+    for (auto const &shared_font: sw::SharedFonts) {
+        PlFontData font;
+        if (auto rc = plGetSharedFontByType(&font, shared_font.type); R_FAILED(rc)) {
+            std::printf("Failed to load subtitle font %u: %#x\n", shared_font.type, rc);
+            continue;
+        }
+        if (!default_font || shared_font.type == PlSharedFontType_ChineseSimplified ||
+                (shared_font.type == PlSharedFontType_ChineseTraditional &&
+                    default_font->type == PlSharedFontType_Standard))
+            default_font = font;
 
-    auto *fp = std::fopen(font_file.c_str(), "wb");
-    if (!fp)
-        return;
-    SW_SCOPEGUARD([&fp] { std::fclose(fp); });
+        auto font_file = fonts_dir / shared_font.filename;
+        if (std::filesystem::exists(font_file) && std::filesystem::file_size(font_file) == font.size)
+            continue;
 
-    std::fwrite(font.address, font.size, 1, fp);
+        auto temporary_file = font_file + ".tmp";
+        auto *fp = std::fopen(temporary_file.c_str(), "wb");
+        if (!fp)
+            continue;
 
-    std::printf("Dumped standard font\n");
+        auto written = std::fwrite(font.address, 1, font.size, fp);
+        auto closed = std::fclose(fp);
+        if (written != font.size || closed || std::rename(temporary_file.c_str(), font_file.c_str())) {
+            std::remove(temporary_file.c_str());
+            std::printf("Failed to cache subtitle font %s\n", font_file.c_str());
+            continue;
+        }
+        std::printf("Cached subtitle font %s\n", font_file.c_str());
+    }
+
+    auto subfont_file = sw::fs::Path(sw::LibmpvController::MpvDirectory) / "subfont.ttf";
+    if (default_font && !std::filesystem::exists(subfont_file)) {
+        auto temporary_file = subfont_file + ".tmp";
+        auto *fp = std::fopen(temporary_file.c_str(), "wb");
+        if (fp) {
+            auto written = std::fwrite(default_font->address, 1, default_font->size, fp);
+            auto closed = std::fclose(fp);
+            if (written != default_font->size || closed ||
+                    std::rename(temporary_file.c_str(), subfont_file.c_str()))
+                std::remove(temporary_file.c_str());
+        }
+    }
 }
 
 // libusbhsfs invokes the populate callback on its USB-event thread.
@@ -372,7 +400,13 @@ int main(int argc, const char **argv) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImPlot::CreateContext();
-    ImGui::nx::init();
+    setup_thread.join();
+    if (!ImGui::nx::init()) {
+        std::printf("Failed to initialize interface fonts or keyboard\n");
+        ImPlot::DestroyContext();
+        ImGui::DestroyContext();
+        return 1;
+    }
 
     SW_SCOPEGUARD([] {
         ImGui::nx::exit();

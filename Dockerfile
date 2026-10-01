@@ -25,6 +25,16 @@ RUN if [ "$GIMP_VERSION" = "3" ]; then \
 ENV DEVKITPRO=/opt/devkitpro
 ENV PORTLIBS_PREFIX=${DEVKITPRO}/portlibs/switch
 
+RUN wget -q https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz -O /tmp/libiconv.tar.gz \
+    && echo '3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8  /tmp/libiconv.tar.gz' | sha256sum -c - \
+    && tar xzf /tmp/libiconv.tar.gz -C /tmp \
+    && cd /tmp/libiconv-1.18 \
+    && source ${DEVKITPRO}/switchvars.sh \
+    && ./configure --prefix="${PORTLIBS_PREFIX}" --host=aarch64-none-elf \
+        --disable-shared --enable-static --disable-nls \
+    && make -j2 && make install \
+    && rm -rf /tmp/libiconv-1.18 /tmp/libiconv.tar.gz
+
 # Build libusbhsfs (GPL)
 RUN git clone --depth 1 -b dev https://github.com/DarkMatterCore/libusbhsfs.git /tmp/libusbhsfs \
     && cd /tmp/libusbhsfs \

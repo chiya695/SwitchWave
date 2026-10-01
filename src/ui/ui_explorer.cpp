@@ -164,18 +164,15 @@ void Explorer::render() {
 
     std::string_view path = this->path.internal();
 
-    char buttonstr[50] = {};
-    if (path.length() > 43)
-        std::snprintf(buttonstr, sizeof(buttonstr), "...%s", utf8_skip_from_end(path, 43).data());
-    else
-        std::strncpy(buttonstr, path.data(), sizeof(buttonstr)-1);
+    auto suffix = utf8_skip_from_end(path, 43);
+    auto buttonstr = (suffix.size() < path.size() ? "..." : "") + std::string(suffix);
 
     {
         ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0.5));
         SW_SCOPEGUARD([] { ImGui::PopStyleVar(); });
 
         ImGui::SameLine();
-        want_explore_backward |= ImGui::Button(buttonstr, ImVec2(-1, 0));
+        want_explore_backward |= ImGui::Button(buttonstr.c_str(), ImVec2(-1, 0));
     }
 
     auto reserved_height = ImGui::GetStyle().ItemSpacing.y + ImGui::GetTextLineHeightWithSpacing();
