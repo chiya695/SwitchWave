@@ -5,7 +5,7 @@ endif
 APP_TITLE               :=  SwitchWave
 APP_AUTHOR              :=  averne
 APP_ICON                :=  icon.jpg
-APP_VERSION             :=  1.1.2
+APP_VERSION             :=  1.1.2-zh.1
 APP_COMMIT              :=  $(shell git rev-parse --short HEAD)
 
 FFMPEG_CONFIG           :=  --enable-asm \
@@ -236,6 +236,7 @@ $(DIST_TARGET): $(OUTPUT)
 	@mkdir -p $(DIST_FOLDER)
 	@cp $< $(DIST_FOLDER)
 	@cp misc/mpv.conf $(DIST_FOLDER)
+	@cp README.zh-CN.md $(DIST_FOLDER)
 	@cd $(BUILD)/dist; zip -r $(TOPDIR)/$@ . >/dev/null; cd $(TOPDIR)
 	@rm -rf $(BUILD)/dist
 	@echo Compressed release to $@

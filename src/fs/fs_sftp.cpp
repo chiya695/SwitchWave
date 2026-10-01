@@ -191,6 +191,7 @@ SftpFs::SftpFs(Context &context, std::string_view name, std::string_view mount_n
         .fstat_r      = SftpFs::sftp_fstat,
 
         .stat_r       = SftpFs::sftp_stat,
+        .unlink_r     = SftpFs::sftp_unlink,
         .chdir_r      = SftpFs::sftp_chdir,
 
         .dirStateSize = sizeof(SftpFsDir),
@@ -458,6 +459,35 @@ int SftpFs::sftp_lstat(struct _reent *r, const char *file, struct stat *st) {
     }
 
     ssh2_translate_stat(attrs, st);
+    return 0;
+}
+
+int SftpFs::sftp_unlink(struct _reent *r, const char *name) {
+    auto *priv = static_cast<SftpFs *>(r->deviceData);
+    if (!name || !valid_delete_path(name, priv->mount_name)) {
+        __errno_r(r) = EINVAL;
+        return -1;
+    }
+
+    auto lock = std::scoped_lock(priv->session_mutex);
+    if (!priv->is_connected) {
+        __errno_r(r) = ENOTCONN;
+        return -1;
+    }
+    auto internal_path = priv->translate_path(name);
+    LIBSSH2_SFTP_ATTRIBUTES status;
+    if (auto result = ::libssh2_sftp_lstat(priv->sftp_session, internal_path.c_str(), &status); result) {
+        __errno_r(r) = ssh2_translate_error(result, priv->sftp_session);
+        return -1;
+    }
+    if (!(status.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) || !S_ISREG(status.permissions)) {
+        __errno_r(r) = EINVAL;
+        return -1;
+    }
+    if (auto result = ::libssh2_sftp_unlink(priv->sftp_session, internal_path.c_str()); result) {
+        __errno_r(r) = ssh2_translate_error(result, priv->sftp_session);
+        return -1;
+    }
     return 0;
 }
 

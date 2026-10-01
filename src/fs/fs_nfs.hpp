@@ -47,6 +47,7 @@ class NfsFs final: public NetworkFilesystem {
         static off_t     nfs_seek    (struct _reent *r, void *fd, off_t pos, int dir);
         static int       nfs_fstat   (struct _reent *r, void *fd, struct stat *st);
         static int       nfs_stat    (struct _reent *r, const char *file, struct stat *st);
+        static int       nfs_unlink  (struct _reent *r, const char *name);
         static int       nfs_chdir   (struct _reent *r, const char *name);
         static DIR_ITER *nfs_diropen (struct _reent *r, DIR_ITER *dirState, const char *path);
         static int       nfs_dirreset(struct _reent *r, DIR_ITER *dirState);

@@ -7,6 +7,8 @@
 #include <imgui_deko3d.h>
 
 #include "utils.hpp"
+#include "fs/fs_recent.hpp"
+#include "i18n.hpp"
 
 #include "ui/ui_explorer.hpp"
 
@@ -56,6 +58,7 @@ Explorer::~Explorer() {
 bool Explorer::update_state(PadState &pad, HidTouchScreenState &touch) {
     if (this->need_directory_scan) {
         this->need_directory_scan = false;
+        this->cur_focused_entry = -1;
         this->context.cur_path = this->path.base();
 
         auto *dir = opendir(this->path.c_str());
@@ -91,9 +94,9 @@ bool Explorer::update_state(PadState &pad, HidTouchScreenState &touch) {
                 auto name = std::string(path.filename()) + "##" + path.base();
 
                 if (S_ISDIR(st.st_mode))
-                    this->entries.emplace_back(fs::Node{fs::Node::Type::Directory, std::move(name)});
+                    this->entries.emplace_back(fs::Node{fs::Node::Type::Directory, std::move(name), 0, path.base()});
                 else
-                    this->entries.emplace_back(fs::Node{fs::Node::Type::File, std::move(name), std::size_t(st.st_size)});
+                    this->entries.emplace_back(fs::Node{fs::Node::Type::File, std::move(name), std::size_t(st.st_size), path.base()});
             }
 
             if (this->context.cur_fs->type != fs::Filesystem::Type::Recent) {
@@ -159,8 +162,8 @@ void Explorer::render() {
         }
     }
 
-    bool want_explore_backward = this->is_focused && ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft),
-        want_explore_forward   = this->is_focused && ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight);
+    bool want_explore_backward = this->is_focused && this->pending_delete_path.empty() && ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft),
+        want_explore_forward   = this->is_focused && this->pending_delete_path.empty() && ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight);
 
     std::string_view path = this->path.internal();
 
@@ -175,7 +178,8 @@ void Explorer::render() {
         want_explore_backward |= ImGui::Button(buttonstr.c_str(), ImVec2(-1, 0));
     }
 
-    auto reserved_height = ImGui::GetStyle().ItemSpacing.y + ImGui::GetTextLineHeightWithSpacing();
+    auto reserved_height = (this->allow_file_deletion ? 3 : 1) *
+        (ImGui::GetStyle().ItemSpacing.y + ImGui::GetTextLineHeightWithSpacing());
 
     if (ImGui::BeginListBox("##fsentries", ImVec2(-1, -reserved_height))) {
         SW_SCOPEGUARD([] { ImGui::EndListBox(); });
@@ -196,10 +200,11 @@ void Explorer::render() {
                     ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize()), ImVec2(0, 0), ImVec2(1, 1), tint_col);
                 ImGui::SameLine();
 
-                want_explore_forward |= ImGui::Selectable(entry.name.c_str());
+                bool selected = ImGui::Selectable(entry.name.c_str());
+                want_explore_forward |= selected;
                 auto is_item_focused = ImGui::IsItemFocused();
 
-                if (is_item_focused)
+                if (is_item_focused || selected)
                     this->cur_focused_entry = i;
             }
         }
@@ -209,16 +214,16 @@ void Explorer::render() {
                 this->path = this->path.parent();
             this->need_directory_scan = true;
             this->cur_focused_entry = -1;
-        } else if (want_explore_forward && this->cur_focused_entry != -1u) {
+        } else if (want_explore_forward && this->cur_focused_entry < this->entries.size()) {
             auto &entry = this->entries[this->cur_focused_entry];
             switch (entry.type) {
                 case fs::Node::Type::Directory:
-                    this->path = Explorer::path_from_entry_name(entry.name);
+                    this->path = entry.path;
                     this->need_directory_scan = true;
                     break;
                 case fs::Node::Type::File:
-                    this->selection = Explorer::path_from_entry_name(entry.name);
-                    this->context.cur_file = Explorer::path_from_entry_name(entry.name);
+                    this->selection = entry.path;
+                    this->context.cur_file = entry.path;
                     break;
             }
         }
@@ -231,8 +236,124 @@ void Explorer::render() {
         }
     }
 
-    ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(this->screen_rel_width(0.2), ImGui::GetStyle().ItemSpacing.y));
-    ImGui::Text("Navigate with \ue0ea");
+    bool is_recent = this->context.cur_fs && this->context.cur_fs->type == fs::Filesystem::Type::Recent;
+    if (!this->allow_file_deletion) {
+        ImGui::TextUnformatted(i18n::tr("Navigate with \ue0ea"));
+        return;
+    }
+
+    bool can_delete = this->allow_file_deletion && this->context.cur_fs && this->context.cur_fs->supports_file_deletion() &&
+        this->cur_focused_entry < this->entries.size() &&
+        this->entries[this->cur_focused_entry].type == fs::Node::Type::File;
+    ImGui::BeginDisabled(!can_delete);
+    bool want_delete = ImGui::Button(i18n::label("Delete file"));
+    ImGui::EndDisabled();
+    if (is_recent) {
+        ImGui::SameLine();
+        if (ImGui::Button(i18n::label("Clear recent playback"))) {
+            this->pending_history_fs = this->context.cur_fs;
+            this->history_error = 0;
+            this->cleared_history = false;
+            ImGui::OpenPopup(i18n::label("Confirm history clearing"));
+        }
+    }
+    want_delete |= can_delete && this->is_focused && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft);
+    if (want_delete && can_delete && this->pending_delete_path.empty() && !this->need_directory_scan) {
+        this->pending_delete_path = this->entries[this->cur_focused_entry].path;
+        this->pending_delete_fs = this->context.cur_fs;
+        this->delete_error = 0;
+        this->deleted_file = false;
+        ImGui::OpenPopup(i18n::label("Confirm deletion"));
+    }
+
+    if (ImGui::BeginPopupModal(i18n::label("Confirm deletion"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        SW_SCOPEGUARD([] { ImGui::EndPopup(); });
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + this->screen_rel_width(0.6));
+        SW_SCOPEGUARD([] { ImGui::PopTextWrapPos(); });
+        ImGui::TextWrapped("%s", i18n::tr("This permanently deletes one file from its storage or server. There is no recycle bin."));
+        ImGui::TextWrapped("%s", this->pending_delete_path.c_str());
+        ImGui::Separator();
+        if (ImGui::Button(i18n::label("Cancel"))) {
+            this->pending_delete_path.clear();
+            this->pending_delete_fs.reset();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SetItemDefaultFocus();
+        ImGui::SameLine();
+        if (ImGui::Button(i18n::label("Delete permanently"))) {
+            auto *mounted = this->context.get_filesystem(this->pending_delete_path);
+            if (!this->pending_delete_fs || mounted != this->pending_delete_fs.get())
+                this->delete_error = ENOTCONN;
+            else if (!this->context.player_is_idle && this->context.cur_file == this->pending_delete_path.base())
+                this->delete_error = EBUSY;
+            else
+                this->delete_error = this->pending_delete_fs->delete_file(this->pending_delete_path);
+            this->deleted_file = !this->delete_error;
+            if (this->deleted_file) {
+                this->need_directory_scan = true;
+                this->cur_focused_entry = -1;
+                this->selection.clear();
+                if (this->context.cur_file == this->pending_delete_path.base())
+                    this->context.cur_file.clear();
+            }
+            this->pending_delete_path.clear();
+            this->pending_delete_fs.reset();
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    if (this->delete_error && !is_recent) {
+        const char *message = std::strerror(this->delete_error);
+        switch (this->delete_error) {
+            case EACCES:
+            case EPERM:
+            case EROFS: message = i18n::tr("Deletion is not permitted by the server or the filesystem."); break;
+            case EBUSY: message = i18n::tr("The file is in use. Stop playback before deleting it."); break;
+            case EINVAL: message = i18n::tr("Only regular files can be deleted. Directories and links are not deleted."); break;
+            case ENOENT: message = i18n::tr("The file no longer exists."); break;
+            case ENOTCONN: message = i18n::tr("The server is disconnected or unavailable."); break;
+            case ENOTSUP: message = i18n::tr("This filesystem does not support file deletion."); break;
+        }
+        ImGui::TextWrapped(i18n::tr("Delete failed: %s (%d)"), message, this->delete_error);
+    } else if (this->deleted_file && !is_recent) {
+        ImGui::TextUnformatted(i18n::tr("File deleted."));
+    } else if (is_recent) {
+        ImGui::TextUnformatted(i18n::tr("Navigate with \ue0ea"));
+    } else {
+        ImGui::TextUnformatted(i18n::tr("Navigate with \ue0ea; press \ue002 to delete a file"));
+    }
+
+    if (ImGui::BeginPopupModal(i18n::label("Confirm history clearing"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        SW_SCOPEGUARD([] { ImGui::EndPopup(); });
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + this->screen_rel_width(0.6));
+        SW_SCOPEGUARD([] { ImGui::PopTextWrapPos(); });
+        ImGui::TextWrapped("%s", i18n::tr("This clears saved recent playback paths only. Media files and playback positions are not deleted."));
+        if (ImGui::Button(i18n::label("Cancel"))) {
+            this->pending_history_fs.reset();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SetItemDefaultFocus();
+        ImGui::SameLine();
+        if (ImGui::Button(i18n::label("Clear list"))) {
+            auto recent = this->pending_history_fs;
+            if (!recent || this->context.get_filesystem(std::string_view(recent->mount_name)) != recent.get())
+                this->history_error = ENOTCONN;
+            else
+                this->history_error = static_cast<fs::RecentFs *>(recent.get())->clear_and_save();
+            if (!this->history_error) {
+                this->cleared_history = true;
+                this->need_directory_scan = true;
+                this->cur_focused_entry = -1;
+                this->selection.clear();
+            }
+            this->pending_history_fs.reset();
+            ImGui::CloseCurrentPopup();
+        }
+    }
+    if (is_recent && this->history_error)
+        ImGui::TextWrapped(i18n::tr("History clearing failed: %s (%d)"), std::strerror(this->history_error), this->history_error);
+    else if (is_recent && this->cleared_history)
+        ImGui::TextUnformatted(i18n::tr("Recent playback cleared."));
 }
 
 } // namespace sw::ui

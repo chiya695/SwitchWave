@@ -41,7 +41,18 @@ A hardware-accelerated media player for the Nintendo Switch, built on mpv and FF
 - At startup, missing shared fonts are cached locally in `sdmc:/switch/SwitchWave/fonts/`. A Chinese fallback `subfont.ttf` is created only if one does not already exist; user-provided fallback fonts are preserved. No Nintendo font files are distributed by this repository.
 - The locally cached `subfont.ttf` is used as mpv/libass's fallback font. Exact ASS font matches and embedded fonts still take precedence.
 - mpv is built with libiconv. Valid UTF-8 subtitles remain UTF-8; other text subtitles default to GB18030 (including GBK). For Big5 subtitles, put `sub-codepage=big5` in `mpv.conf`. Encoding cannot recover characters already replaced with literal `?` upstream.
-- This is text-rendering/input support, not a translation of the English menus. Existing audio/subtitle language preferences are not changed.
+- Select `Settings` → `Language` → `简体中文` for Chinese menus, settings, playback options and help. The choice takes effect immediately and is saved in `SwitchWave.conf`; select `English` to switch back. mpv property names, configuration syntax and third-party logs remain unchanged. Existing audio/subtitle track language preferences are not changed.
+
+## File deletion (this fork)
+- Explorer supports deleting one regular file from SD, writable USB, SMB, NFS and SFTP. Select a file and press X or use `Delete file`, then verify its full path in the confirmation dialog. Cancel is the default focus.
+- Deletion is permanent, not a recycle-bin operation. It is not recursive: directories, roots and unsupported filesystems are not deleted. HTTP/HTTPS and Recent are read-only for this feature; internal `user:` storage is not enabled for deletion.
+- Server permissions still apply. Failed deletion displays an error; successful deletion refreshes the directory. Player file-pickers do not expose deletion controls.
+- Back up important files and first test with a disposable file. No Switch hardware or live remote-server deletion test has been performed.
+
+## Recent playback privacy (this fork)
+- Select Recent in Explorer and use `Clear recent playback`. After confirmation, the list and its saved `history.txt` are cleared immediately; the operation does not delete media or playback positions.
+- `Settings` → `Clear history` also persists the cleared list immediately. New playback creates new history entries; use `Max entries = 0` to stop retaining entries.
+- This clears SwitchWave's recent-list file, not all possible traces: mpv resume files, screenshots, backups and server logs are separate.
 
 See [the Chinese analysis and device checklist](docs/chinese-support.md) for architecture, root causes and limitations.
 

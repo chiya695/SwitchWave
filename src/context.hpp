@@ -23,6 +23,7 @@
 #include <string_view>
 
 #include "utils.hpp"
+#include "i18n.hpp"
 #include "fs/fs_common.hpp"
 #include "fs/fs_ums.hpp"
 
@@ -63,6 +64,7 @@ class Context {
         bool disable_screensaver        = true;
         bool override_screenshot_button = false;
         bool quit_to_home_menu          = false;
+        i18n::Language language          = i18n::Language::English;
 
         std::size_t history_size = 50;
         std::string cur_path;
@@ -70,7 +72,8 @@ class Context {
     // Context
     public:
         bool want_quit = false, cli_mode = false;
-        bool playback_started, player_is_idle;
+        bool recent_history_changed = false;
+        bool playback_started = false, player_is_idle = true;
 
         int last_error            = 0;
         ErrorType last_error_type = ErrorType::Io;

@@ -41,6 +41,7 @@ extern "C" {
 #include <ass/ass.h>
 
 #include "utils.hpp"
+#include "i18n.hpp"
 #include "utf8.hpp"
 #include "fs/fs_recent.hpp"
 #include "fs/fs_http.hpp"
@@ -119,27 +120,27 @@ void MainMenuGui::render() {
         // ImGui::SetCursorPosX(this->screen_rel_width(0.2));
         // ImGui::Dummy(this->screen_rel_vec<ImVec2>(0.2, 0));
 
-        if (ImGui::BeginTabItem("Explorer", nullptr, ImGuiTabItemFlags_NoReorder)) {
+        if (ImGui::BeginTabItem(i18n::label("Explorer"), nullptr, ImGuiTabItemFlags_NoReorder)) {
             SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
             this->cur_tab = Tab::Explorer;
         }
 
-        if (ImGui::BeginTabItem("Editor",     nullptr, ImGuiTabItemFlags_NoReorder)) {
+        if (ImGui::BeginTabItem(i18n::label("Editor"),     nullptr, ImGuiTabItemFlags_NoReorder)) {
             SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
             this->cur_tab = Tab::ConfigEdit;
         }
 
-        if (ImGui::BeginTabItem("Settings", nullptr, ImGuiTabItemFlags_NoReorder)) {
+        if (ImGui::BeginTabItem(i18n::label("Settings"), nullptr, ImGuiTabItemFlags_NoReorder)) {
             SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
             this->cur_tab = Tab::Settings;
         }
 
-        if (ImGui::BeginTabItem("Info & Help", nullptr, ImGuiTabItemFlags_NoReorder)) {
+        if (ImGui::BeginTabItem(i18n::label("Info & Help"), nullptr, ImGuiTabItemFlags_NoReorder)) {
             SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
             this->cur_tab = Tab::InfoHelp;
         }
 
-        if (ImGui::TabItemButton("Exit", ImGuiTabItemFlags_NoReorder))
+        if (ImGui::TabItemButton(i18n::label("Exit"), ImGuiTabItemFlags_NoReorder))
             this->context.want_quit = true;
 
         this->explorer.is_displayed = this->editor.is_displayed =
@@ -194,8 +195,8 @@ void MainMenuGui::render() {
                 break;
         }
 
-        ImGui::OpenPopup(error_type_desc);
-        if (ImGui::BeginPopupModal(error_type_desc, nullptr,
+        ImGui::OpenPopup(i18n::label(error_type_desc));
+        if (ImGui::BeginPopupModal(i18n::label(error_type_desc), nullptr,
                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) {
             SW_SCOPEGUARD([] { ImGui::EndPopup(); });
 
@@ -208,11 +209,11 @@ void MainMenuGui::render() {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImColor(0.9f, 0.2f, 0.1f).Value);
                 SW_SCOPEGUARD([] { ImGui::PopStyleColor(); });
 
-                ImGui::TextWrapped("%s (%d)", error_desc, context.last_error);
+                ImGui::TextWrapped("%s (%d)", i18n::tr(error_desc), context.last_error);
             }
 
-            auto ok_string = "Ok";
-            auto size = ImGui::GetContentRegionAvail() - ImGui::CalcTextSize(ok_string) -
+            auto ok_string = i18n::label("Ok");
+            auto size = ImGui::GetContentRegionAvail() - ImGui::CalcTextSize(ok_string, nullptr, true) -
                 imstyle.ItemInnerSpacing - imstyle.ItemSpacing;
 
             ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(size.x / 2, size.y));
@@ -226,17 +227,17 @@ void MainMenuGui::render() {
 
 void MediaExplorer::metadata_thread_fn(std::stop_token token) {
     while (!token.stop_requested()) {
-        {
-            auto lk = std::unique_lock(this->metadata_query_mutex);
-            if (this->metadata_query_condvar.wait_for(lk, 100ms) == std::cv_status::timeout)
-                continue;
-        }
+        auto lock = std::unique_lock(this->metadata_query_mutex);
+        if (!this->metadata_query_condvar.wait_for(lock, 100ms, [this, &token] {
+                return this->metadata_query_node || token.stop_requested();
+            }) || token.stop_requested())
+            continue;
 
         auto *entry = this->metadata_query_node;
         MediaMetadata media_info = {};
 
         if (entry) {
-            auto entry_path = Explorer::path_from_entry_name(entry->name);
+            auto entry_path = std::string_view(entry->path);
 
             // For HTTP filesystems, pass the URL directly to avformat (ffmpeg supports HTTP natively)
             std::string path;
@@ -322,6 +323,7 @@ end:
 
 MediaExplorer::MediaExplorer(Renderer &renderer, Context &context):
         Widget(renderer), context(context), explorer(renderer, context) {
+    this->explorer.allow_file_deletion = true;
     this->metadata_thread = std::jthread(&MediaExplorer::metadata_thread_fn, this);
 }
 
@@ -332,8 +334,14 @@ MediaExplorer::~MediaExplorer() {
 }
 
 bool MediaExplorer::update_state(PadState &pad, HidTouchScreenState &touch) {
+    if (this->context.recent_history_changed) {
+        this->explorer.need_directory_scan = true;
+        this->context.recent_history_changed = false;
+    }
     bool scanning = this->explorer.need_directory_scan;
+    auto lock = std::unique_lock(this->metadata_query_mutex, std::defer_lock);
     if (scanning) {
+        lock.lock();
         this->metadata_query_node   = nullptr;
         this->metadata_query_target = nullptr;
     }
@@ -365,7 +373,11 @@ void MediaExplorer::render() {
         this->context.cur_file = std::move(this->explorer.selection.base());
 
     ImGui::TableNextColumn();
-    ImGui::SeparatorText("Description");
+    ImGui::SeparatorText(i18n::tr("Description"));
+
+    auto lock = std::unique_lock(this->metadata_query_mutex, std::try_to_lock);
+    if (!lock.owns_lock())
+        return;
 
     auto ent_idx = this->explorer.cur_focused_entry;
     if (ent_idx == -1ul)
@@ -375,27 +387,26 @@ void MediaExplorer::render() {
 
     ImGui::NewLine();
 
-    auto fname = Explorer::filename_from_entry_name(entry.name);
-    ImGui::TextWrapped("Name: %.*s", int(fname.length()), fname.data());
+    auto fname = fs::Path::filename(entry.path);
+    ImGui::TextWrapped(i18n::tr("Name: %.*s"), int(fname.length()), fname.data());
 
     if (entry.type == fs::Node::Type::Directory)
         return;
 
     auto [size, suffix] = utils::to_human_size(entry.size);
-    ImGui::Text("Size: %.2f%s", size, suffix.data());
+    ImGui::Text(i18n::tr("Size: %.2f%s"), size, suffix.data());
 
     ImGui::NewLine();
 
     auto &metadata = this->media_metadata[ent_idx];
     if (!metadata) {
-        bool ret = ImGui::Button("Press \ue0e6/\ue0e7 to show metadata", ImVec2(-1, 0));
+        bool ret = ImGui::Button(i18n::label("Press \ue0e6/\ue0e7 to show metadata"), ImVec2(-1, 0));
         if (ret || ImGui::IsKeyPressed(ImGuiKey_GamepadL2) || ImGui::IsKeyPressed(ImGuiKey_GamepadR2)) {
             metadata = std::make_unique<MediaMetadata>();
 
             this->metadata_query_node   = &entry;
             this->metadata_query_target = metadata.get();
 
-            auto lk = std::unique_lock(this->metadata_query_mutex);
             this->metadata_query_condvar.notify_one();
         }
         return;
@@ -413,27 +424,27 @@ void MediaExplorer::render() {
     SW_SCOPEGUARD([this] { ImGui::SetWindowFontScale(this->scale_factor()); });
 
     auto &i = *metadata;
-    ImGui::TextWrapped("Format: %s (%d stream%s)", i.container_name,
-        i.num_streams, i.num_streams != 1 ? "s" : "");
-    ImGui::TextWrapped("Duration: %ld:%02ld:%02ld", FORMAT_TIME(i.duration));
+    ImGui::TextWrapped(i18n::tr("Format: %s (%d stream%s)"), i.container_name,
+        i.num_streams, i18n::current_language == i18n::Language::English && i.num_streams != 1 ? "s" : "");
+    ImGui::TextWrapped(i18n::tr("Duration: %ld:%02ld:%02ld"), FORMAT_TIME(i.duration));
 
-    ImGui::SeparatorText("Video");
-    bullet_wrapped("%d stream%s", i.num_vstreams, i.num_vstreams != 1 ? "s" : "");
-    bullet_wrapped("Codec: %s", i.video_codec_name);
-    if (i.video_profile_name) bullet_wrapped("Profile: %s", i.video_profile_name);
-    bullet_wrapped("Dimensions: %dx%d", i.video_width, i.video_height);
-    bullet_wrapped("Framerate: %.3fHz", i.video_framerate);
-    bullet_wrapped("Pixel format: %s", i.video_pix_format);
+    ImGui::SeparatorText(i18n::tr("Video"));
+    bullet_wrapped(i18n::tr("%d stream%s"), i.num_vstreams, i18n::current_language == i18n::Language::English && i.num_vstreams != 1 ? "s" : "");
+    bullet_wrapped(i18n::tr("Codec: %s"), i.video_codec_name);
+    if (i.video_profile_name) bullet_wrapped(i18n::tr("Profile: %s"), i.video_profile_name);
+    bullet_wrapped(i18n::tr("Dimensions: %dx%d"), i.video_width, i.video_height);
+    bullet_wrapped(i18n::tr("Framerate: %.3fHz"), i.video_framerate);
+    bullet_wrapped(i18n::tr("Pixel format: %s"), i.video_pix_format);
 
-    ImGui::SeparatorText("Audio");
-    bullet_wrapped("%d stream%s", i.num_astreams, i.num_astreams != 1 ? "s" : "");
-    bullet_wrapped("Codec: %s (%d channels)", i.audio_codec_name, i.num_audio_channels);
-    if (i.audio_profile_name) bullet_wrapped("Profile: %s", i.audio_profile_name);
-    bullet_wrapped("Samplerate: %dHz", i.audio_sample_rate);
-    bullet_wrapped("Sample format: %s", i.audio_sample_format);
+    ImGui::SeparatorText(i18n::tr("Audio"));
+    bullet_wrapped(i18n::tr("%d stream%s"), i.num_astreams, i18n::current_language == i18n::Language::English && i.num_astreams != 1 ? "s" : "");
+    bullet_wrapped(i18n::tr("Codec: %s (%d channels)"), i.audio_codec_name, i.num_audio_channels);
+    if (i.audio_profile_name) bullet_wrapped(i18n::tr("Profile: %s"), i.audio_profile_name);
+    bullet_wrapped(i18n::tr("Samplerate: %dHz"), i.audio_sample_rate);
+    bullet_wrapped(i18n::tr("Sample format: %s"), i.audio_sample_format);
 
-    ImGui::SeparatorText("Subtitles");
-    bullet_wrapped("%d stream%s", i.num_sstreams, i.num_sstreams != 1 ? "s" : "");
+    ImGui::SeparatorText(i18n::tr("Subtitles"));
+    bullet_wrapped(i18n::tr("%d stream%s"), i.num_sstreams, i18n::current_language == i18n::Language::English && i.num_sstreams != 1 ? "s" : "");
 }
 
 ConfigEditor::ConfigEditor(Renderer &renderer, Context &context): Widget(renderer), context(context) {
@@ -544,13 +555,13 @@ void ConfigEditor::render() {
         auto col = (ImGui::nx::getCurrentTheme() == ColorSetId_Dark) ?
             ImColor(0xf2, 0x77, 0x7a) : ImColor(0xbb, 0x11, 0x14);
         ImGui::SameLine(0, this->screen_rel_width(0.08));
-        ImGui::TextColored(col, "You have unsaved changes");
+        ImGui::TextColored(col, "%s", i18n::tr("You have unsaved changes"));
     }
 
     ImGui::SameLine();
     ImGui::SetCursorScreenPos(ImVec2(this->screen_rel_width(0.88), ImGui::GetCursorScreenPos().y));
 
-    if (ImGui::Button("Save")) {
+    if (ImGui::Button(i18n::label("Save"))) {
         if (this->save_text()) {
             this->is_in_error         = true;
         } else {
@@ -559,7 +570,7 @@ void ConfigEditor::render() {
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Reset")) {
+    if (ImGui::Button(i18n::label("Reset"))) {
         if (this->reset_text()) {
             this->is_in_error         = true;
         } else {
@@ -575,8 +586,8 @@ void ConfigEditor::render() {
         ImGui::BeginGroup();
         SW_SCOPEGUARD([] { ImGui::EndGroup(); });
 
-        ImGui::TextColored(ImColor(200, 50, 10), "Failed to load configuration file");
-        if (ImGui::Button("Create file")) {
+        ImGui::TextColored(ImColor(200, 50, 10), "%s", i18n::tr("Failed to load configuration file"));
+        if (ImGui::Button(i18n::label("Create file"))) {
             auto *fp = std::fopen(this->config_path.data(), "w");
             this->is_in_error = fp == nullptr;
             std::fclose(fp);
@@ -751,7 +762,8 @@ bool SettingsEditor::update_state(PadState &pad, HidTouchScreenState &touch) {
 }
 
 void SettingsEditor::render() {
-    ImGui::Text("Settings");
+    i18n::current_language = this->context.language;
+    ImGui::Text(i18n::tr("Settings"));
 
     ImGui::SameLine((ImGui::GetContentRegionAvail() -
         ImGui::CalcTextSize(app_version_str.data(), app_version_str.data() + app_version_str.size())).x);
@@ -759,19 +771,33 @@ void SettingsEditor::render() {
 
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Horizontal, 3.0f);
 
-    if (ImGui::Button("Read from file")) {
+    const char *language_name = this->context.language == i18n::Language::Chinese ? "简体中文" : "English";
+    if (ImGui::BeginCombo(i18n::label("Language"), language_name)) {
+        SW_SCOPEGUARD([] { ImGui::EndCombo(); });
+        for (auto language: {i18n::Language::English, i18n::Language::Chinese}) {
+            bool selected = this->context.language == language;
+            if (ImGui::Selectable(language == i18n::Language::Chinese ? "简体中文" : "English", selected)) {
+                this->context.language = i18n::current_language = language;
+                this->context.write_to_file();
+            }
+            if (selected)
+                ImGui::SetItemDefaultFocus();
+        }
+    }
+
+    if (ImGui::Button(i18n::label("Read from file"))) {
         if (this->context.read_from_file())
             std::printf("Failed to read configuration\n");
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Save to file")) {
+    if (ImGui::Button(i18n::label("Save to file"))) {
         if (this->context.write_to_file())
             std::printf("Failed to save configuration\n");
     }
 
     ImGui::NewLine();
-    ImGui::Text("Network");
+    ImGui::Text(i18n::tr("Network"));
 
     utils::StaticString64 id_buffer;
     auto make_id = [&id_buffer](std::size_t i, std::string_view s) {
@@ -828,14 +854,14 @@ void SettingsEditor::render() {
 
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("##delcol",   ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.02));
-        ImGui::TableSetupColumn("Type",       ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.06));
-        ImGui::TableSetupColumn("Name");
-        ImGui::TableSetupColumn("Host",       ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.15));
-        ImGui::TableSetupColumn("Port",       ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.06));
-        ImGui::TableSetupColumn("Share/path", ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.15));
-        ImGui::TableSetupColumn("Username",   ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.12));
-        ImGui::TableSetupColumn("Password",   ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.12));
-        ImGui::TableSetupColumn("Status",     ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.09));
+        ImGui::TableSetupColumn(i18n::label("Type"),       ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.06));
+        ImGui::TableSetupColumn(i18n::label("Name"));
+        ImGui::TableSetupColumn(i18n::label("Host"),       ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.15));
+        ImGui::TableSetupColumn(i18n::label("Port"),       ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.06));
+        ImGui::TableSetupColumn(i18n::label("Share/path"), ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.15));
+        ImGui::TableSetupColumn(i18n::label("Username"),   ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.12));
+        ImGui::TableSetupColumn(i18n::label("Password"),   ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.12));
+        ImGui::TableSetupColumn(i18n::label("Status"),     ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.09));
         ImGui::TableHeadersRow();
 
         for (std::size_t i = 0; i < this->context.network_infos.size(); ++i) {
@@ -901,7 +927,7 @@ void SettingsEditor::render() {
 
             ImGui::TableNextColumn();
             bool is_connected = info->fs && info->fs->connected();
-            if (ImGui::Button(make_id(i, !is_connected ? "Connect" : "Disconnect"))) {
+            if (ImGui::Button(make_id(i, i18n::label(!is_connected ? "Connect" : "Disconnect")))) {
                 int ret;
                 if (!is_connected)
                     ret = this->context.register_network_fs  (*info);
@@ -924,7 +950,7 @@ void SettingsEditor::render() {
         this->has_swkbd_visible = false;
     }
 
-    if (ImGui::Button("New"))
+    if (ImGui::Button(i18n::label("New")))
         this->context.network_infos.push_back(std::make_unique<Context::NetworkFsInfo>());
 
     ImGui::NewLine();
@@ -933,37 +959,39 @@ void SettingsEditor::render() {
     SW_SCOPEGUARD([] { ImGui::EndTable (); });
 
     ImGui::TableNextColumn();
-    ImGui::Text("Video");
+    ImGui::Text(i18n::tr("Video"));
 
-    ImGui::Checkbox("Use fast presentation",      &this->context.use_fast_presentation);
-    ImGui::Checkbox("Disable screensaver",        &this->context.disable_screensaver);
-    ImGui::Checkbox("Override screenshot button", &this->context.override_screenshot_button);
+    ImGui::Checkbox(i18n::label("Use fast presentation"),      &this->context.use_fast_presentation);
+    ImGui::Checkbox(i18n::label("Disable screensaver"),        &this->context.disable_screensaver);
+    ImGui::Checkbox(i18n::label("Override screenshot button"), &this->context.override_screenshot_button);
 
     ImGui::NewLine();
-    ImGui::Text("Misc");
-    ImGui::Checkbox("Quit to home menu",          &this->context.quit_to_home_menu);
+    ImGui::Text(i18n::tr("Misc"));
+    ImGui::Checkbox(i18n::label("Quit to home menu"),          &this->context.quit_to_home_menu);
 
     ImGui::TableNextColumn();
-    ImGui::Text("History");
+    ImGui::Text(i18n::tr("History"));
 
     {
         ImGui::PushItemWidth(this->screen_rel_width(0.2));
         SW_SCOPEGUARD([] { ImGui::PopItemWidth(); });
 
         std::size_t history_size_min = 0;
-        ImGui::DragScalar("Max entries", ImGuiDataType_U64, &context.history_size, 0.05f, &history_size_min);
+        ImGui::DragScalar(i18n::label("Max entries"), ImGuiDataType_U64, &context.history_size, 0.05f, &history_size_min);
     }
 
-    if (ImGui::Button("Clear history")) {
+    if (ImGui::Button(i18n::label("Clear history"))) {
         for (auto &fs: this->context.filesystems) {
-            if (fs->type == fs::Filesystem::Type::Recent)
-                reinterpret_cast<fs::RecentFs *>(fs.get())->clear();
+            if (fs->type == fs::Filesystem::Type::Recent) {
+                if (auto error = static_cast<fs::RecentFs *>(fs.get())->clear_and_save())
+                    this->context.set_error(error);
+            }
         }
     }
 
     // We would need to parse mpv.conf to be certain of the watch_later directory's location
     ImGui::SameLine();
-    if (ImGui::Button("Clear playback positions")) {
+    if (ImGui::Button(i18n::label("Clear playback positions"))) {
         auto path = fs::Path(Context::AppDirectory) / "watch_later";
 
         // Using rmdir would need to clear all the files inside beforehand, so just use a faster native call
@@ -972,7 +1000,7 @@ void SettingsEditor::render() {
     }
 
     ImGui::NewLine();
-    ImGui::Text("USB");
+    ImGui::Text(i18n::tr("USB"));
 
     if (ImGui::BeginTable("##usblistbox", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_ScrollY,
             this->screen_rel_vec<ImVec2>(0.4, 0.2))) {
@@ -982,9 +1010,9 @@ void SettingsEditor::render() {
         SW_SCOPEGUARD([&] { ImGui::SetWindowFontScale(1.0); });
 
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Name",   ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.25));
-        ImGui::TableSetupColumn("Type",   ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.05));
-        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.1));
+        ImGui::TableSetupColumn(i18n::label("Name"),   ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.25));
+        ImGui::TableSetupColumn(i18n::label("Type"),   ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.05));
+        ImGui::TableSetupColumn(i18n::label("Status"), ImGuiTableColumnFlags_WidthFixed, this->screen_rel_width(0.1));
         ImGui::TableHeadersRow();
 
         auto &devs = this->context.ums.get_devices();
@@ -1001,7 +1029,7 @@ void SettingsEditor::render() {
             ImGui::Text(LIBUSBHSFS_FS_TYPE_STR(dev.type));
 
             ImGui::TableNextColumn();
-            if (ImGui::Button(make_id(i, "Unmount"))) {
+            if (ImGui::Button(make_id(i, i18n::label("Unmount")))) {
                 std::erase_if(this->context.filesystems, [&dev](const auto &fs) {
                     return dev.mount_name == fs->mount_name;
                 });
@@ -1030,12 +1058,12 @@ void InfoHelp::render() {
 
     ImGui::TableNextColumn();
 
-    ImGui::Text("Usage:");
+    ImGui::Text(i18n::tr("Usage:"));
 
     ImGui::Dummy(ImVec2(0, ImGui::GetFontSize() / 2));
 
     {
-        ImGui::SeparatorText("Playback");
+        ImGui::SeparatorText(i18n::tr("Playback"));
 
         ImGui::Indent();
         SW_SCOPEGUARD([] { ImGui::Unindent(); });
@@ -1043,21 +1071,21 @@ void InfoHelp::render() {
         ImGui::SetWindowFontScale(0.9 * this->scale_factor());
         SW_SCOPEGUARD([this] { ImGui::SetWindowFontScale(this->scale_factor()); });
 
-        bullet_wrapped("Press \ue045 to quit");
-        bullet_wrapped("Press \ue000 or \ue002 to pause/play");
-        bullet_wrapped("Press \ue0a4/\ue0a5 to seek \u00b15s, or \ue0a6/\ue0a7 for \u00b160s");
-        bullet_wrapped("Press \ue0a6/\ue0a7 while holding \ue0af/\ue0b0 to skip chapters");
-        bullet_wrapped("Use \ue0c1, or slide the touchscreen \ue121 to seek forward and backward");
-        bullet_wrapped("Use \ue0c2 horizontally, or slide the right side of the touchscreen \ue121 to adjust the volume");
-        bullet_wrapped("Use \ue0c2 vertically, or slide the left side of the touchscreen \ue121 to adjust the backlight brightness");
-        bullet_wrapped("Press \ue081/\ue082 to take a screenshot at the source video resolution");
-        bullet_wrapped("Press \ue0b1/\ue0b2 to show the playback bar, and \ue001 to hide it");
+        bullet_wrapped(i18n::tr("Press \ue045 to quit"));
+        bullet_wrapped(i18n::tr("Press \ue000 or \ue002 to pause/play"));
+        bullet_wrapped(i18n::tr("Press \ue0a4/\ue0a5 to seek \u00b15s, or \ue0a6/\ue0a7 for \u00b160s"));
+        bullet_wrapped(i18n::tr("Press \ue0a6/\ue0a7 while holding \ue0af/\ue0b0 to skip chapters"));
+        bullet_wrapped(i18n::tr("Use \ue0c1, or slide the touchscreen \ue121 to seek forward and backward"));
+        bullet_wrapped(i18n::tr("Use \ue0c2 horizontally, or slide the right side of the touchscreen \ue121 to adjust the volume"));
+        bullet_wrapped(i18n::tr("Use \ue0c2 vertically, or slide the left side of the touchscreen \ue121 to adjust the backlight brightness"));
+        bullet_wrapped(i18n::tr("Press \ue081/\ue082 to take a screenshot at the source video resolution"));
+        bullet_wrapped(i18n::tr("Press \ue0b1/\ue0b2 to show the playback bar, and \ue001 to hide it"));
     }
 
     ImGui::Dummy(ImVec2(0, ImGui::GetFontSize() / 2));
 
     {
-        ImGui::SeparatorText("Settings menu");
+        ImGui::SeparatorText(i18n::tr("Settings menu"));
 
         ImGui::Indent();
         SW_SCOPEGUARD([] { ImGui::Unindent(); });
@@ -1065,15 +1093,15 @@ void InfoHelp::render() {
         ImGui::SetWindowFontScale(0.9 * this->scale_factor());
         SW_SCOPEGUARD([this] { ImGui::SetWindowFontScale(this->scale_factor()); });
 
-        bullet_wrapped("Press \ue003 to open the menu");
-        bullet_wrapped("Most relevant settings can be found here, "
-            "along with useful statistics on playback and performance");
+        bullet_wrapped(i18n::tr("Press \ue003 to open the menu"));
+        bullet_wrapped(i18n::tr("Most relevant settings can be found here, "
+            "along with useful statistics on playback and performance"));
     }
 
     ImGui::Dummy(ImVec2(0, ImGui::GetFontSize() / 2));
 
     {
-        ImGui::SeparatorText("Console");
+        ImGui::SeparatorText(i18n::tr("Console"));
 
         ImGui::Indent();
         SW_SCOPEGUARD([] { ImGui::Unindent(); });
@@ -1081,11 +1109,11 @@ void InfoHelp::render() {
         ImGui::SetWindowFontScale(0.9 * this->scale_factor());
         SW_SCOPEGUARD([this] { ImGui::SetWindowFontScale(this->scale_factor()); });
 
-        bullet_wrapped("Press \ue046 to open the console");
-        bullet_wrapped("Any mpv command can be executed here. For more information, "
-            "see: https://mpv.io/manual/master/#command-interface");
-        bullet_wrapped("The console also shows logs from the player core");
-        bullet_wrapped("The logging level can be adjusted in the menu (Misc/Log level)");
+        bullet_wrapped(i18n::tr("Press \ue046 to open the console"));
+        bullet_wrapped(i18n::tr("Any mpv command can be executed here. For more information, "
+            "see: https://mpv.io/manual/master/#command-interface"));
+        bullet_wrapped(i18n::tr("The console also shows logs from the player core"));
+        bullet_wrapped(i18n::tr("The logging level can be adjusted in the menu (Misc/Log level)"));
     }
 
     ImGui::TableNextColumn();
@@ -1093,7 +1121,7 @@ void InfoHelp::render() {
     ImGui::TextWrapped("%s %s", APP_TITLE, app_version_str.data());
 
     ImGui::Dummy(ImVec2(0, ImGui::GetFontSize() / 2));
-    ImGui::SeparatorText("Libraries");
+    ImGui::SeparatorText(i18n::tr("Libraries"));
     bullet_wrapped("FFmpeg: %s\n", av_version_info());
 
     {
@@ -1127,7 +1155,7 @@ void InfoHelp::render() {
         LIBUSBHSFS_VERSION_MINOR, LIBUSBHSFS_VERSION_MICRO);
 
     ImGui::Dummy(ImVec2(0, ImGui::GetFontSize() / 2));
-    ImGui::SeparatorText("Built on");
+    ImGui::SeparatorText(i18n::tr("Built on"));
     ImGui::Text(" %s", app_build_date_str.data());
 }
 

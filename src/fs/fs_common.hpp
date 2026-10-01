@@ -19,11 +19,16 @@
 
 #include <cstring>
 #include <cstdlib>
+#include <cerrno>
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
 #include <sys/iosupport.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include "file_actions.hpp"
 
 namespace sw::fs {
 
@@ -130,6 +135,7 @@ struct Node {
     std::string name;
 
     std::size_t size = 0;
+    std::string path;
 };
 
 class Filesystem {
@@ -146,6 +152,25 @@ class Filesystem {
         constexpr Filesystem(Type type, std::string_view name, std::string_view mount_name):
             type(type), name(name), mount_name(mount_name) { }
         virtual ~Filesystem() = default;
+
+        virtual bool supports_file_deletion() const {
+            return (this->type == Sdmc && this->mount_name == "sdmc:") || this->type == Usb;
+        }
+
+        int delete_file(const Path &path) const {
+            if (!this->supports_file_deletion())
+                return ENOTSUP;
+            if (!valid_delete_path(path.base(), this->mount_name))
+                return EINVAL;
+            if (this->type != Network) {
+                struct stat status;
+                if (::lstat(path.c_str(), &status))
+                    return errno;
+                if (!S_ISREG(status.st_mode))
+                    return EINVAL;
+            }
+            return ::unlink(path.c_str()) ? errno : 0;
+        }
 
         int register_fs() const {
             auto id = FindDevice(this->mount_name.data());
@@ -184,6 +209,10 @@ class NetworkFilesystem: public Filesystem {
 
     public:
         virtual ~NetworkFilesystem() = default;
+
+        virtual bool supports_file_deletion() const override {
+            return this->is_connected && (this->protocol == Smb || this->protocol == Nfs || this->protocol == Sftp);
+        }
 
         virtual int initialize() = 0;
         virtual int connect(std::string_view host, std::uint16_t port, std::string_view share,

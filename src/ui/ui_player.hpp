@@ -153,7 +153,7 @@ struct MpvOptionCheckbox {
 
     template <typename T = void*>
     void run(LibmpvController &lmpv, T(*transform)(LibmpvController&, bool) = nullptr) {
-        if (ImGui::Checkbox(this->display_name.data(), &this->value)) {
+        if (ImGui::Checkbox(i18n::label(this->display_name.data()), &this->value)) {
             if (transform)
                 lmpv.set_property_async(this->name.data(), transform(lmpv, this->value));
             else
@@ -197,12 +197,12 @@ struct MpvOptionCombo {
 
     template <typename U = void*>
     void run(LibmpvController &lmpv, U(*transform)(LibmpvController&, T) = nullptr) {
-        if (ImGui::BeginCombo(this->display_name.data(), this->options[this->cur_idx].first.data())) {
+        if (ImGui::BeginCombo(i18n::label(this->display_name.data()), i18n::tr(this->options[this->cur_idx].first.data()))) {
             SW_SCOPEGUARD([] { ImGui::EndCombo(); });
 
             for (std::size_t i = 0; i < this->options.size(); i++) {
                 bool is_selected = std::size_t(this->cur_idx) == i;
-                if (ImGui::Selectable(this->options[i].first.data(), is_selected)) {
+                if (ImGui::Selectable(i18n::label(this->options[i].first.data()), is_selected)) {
                     this->cur_idx = i;
                     if (transform)
                         lmpv.set_property_async(this->name, transform(lmpv, this->options[this->cur_idx].second));
@@ -235,14 +235,14 @@ struct MpvOptionBoundedScalar {
     }
 
     void run(LibmpvController &lmpv, const char *reset_label = nullptr) {
-        if (ImGui::SliderScalar(this->display_name.data(), to_imgui_data_type<T>(),
+        if (ImGui::SliderScalar(i18n::label(this->display_name.data()), to_imgui_data_type<T>(),
                 &this->cur_value, &this->min, &this->max, this->format)) {
             lmpv.set_property_async(this->name, this->cur_value);
         }
 
         if (reset_label) {
             ImGui::SameLine();
-            if (ImGui::Button(reset_label))
+            if (ImGui::Button(i18n::label(reset_label)))
                 lmpv.set_property_async(this->name, this->cur_value = this->default_value);
         }
     }
@@ -272,14 +272,14 @@ struct MpvOptionScalar {
     void run(LibmpvController &lmpv, const char *reset_label = nullptr) {
         constexpr T min = std::numeric_limits<T>::min(), max = std::numeric_limits<T>::min();
 
-        if (ImGui::DragScalar(this->display_name.data(), to_imgui_data_type<T>(),
+        if (ImGui::DragScalar(i18n::label(this->display_name.data()), to_imgui_data_type<T>(),
                 &this->cur_value, this->speed, &min, &max, this->format)) {
             lmpv.set_property_async(this->name, this->cur_value);
         }
 
         if (reset_label) {
             ImGui::SameLine();
-            if (ImGui::Button(reset_label))
+            if (ImGui::Button(i18n::label(reset_label)))
                 lmpv.set_property_async(this->name, this->cur_value = this->default_value);
         }
     }
@@ -375,11 +375,11 @@ class PlayerMenu final: public Widget {
             std::vector<TrackInfo> &tracks;
 
             void run(LibmpvController &lmpv) {
-                if (ImGui::BeginListBox(this->display_name.data(), ImVec2(-1, 0))) {
+                if (ImGui::BeginListBox(i18n::label(this->display_name.data()), ImVec2(-1, 0))) {
                     SW_SCOPEGUARD([] { ImGui::EndListBox(); });
 
                     for (auto &track: this->tracks) {
-                        if (ImGui::Selectable(track.name.c_str(), track.selected))
+                        if (ImGui::Selectable(track.track_id == 0 ? i18n::label("None") : track.name.c_str(), track.selected))
                             lmpv.set_property_async(this->name.data(), track.track_id);
 
                         if (track.selected)

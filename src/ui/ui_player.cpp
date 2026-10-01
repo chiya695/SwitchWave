@@ -28,6 +28,7 @@
 #include <imgui_deko3d.h>
 
 #include "utils.hpp"
+#include "i18n.hpp"
 #include "utf8.hpp"
 #include "fs/fs_http.hpp"
 #include "ui/ui_explorer.hpp"
@@ -143,7 +144,7 @@ void PlayerGui::screenshot_button_thread_fn(std::stop_token token) {
                 } else {
                     if (delta < PlayerGui::MovieCaptureTimeout) {
                         this->lmpv.command_async("screenshot", "subtitles");
-                        this->set_show_string(500ms, "Saving screenshot");
+                        this->set_show_string(500ms, i18n::tr("Saving screenshot"));
                     }
 
                     down_start_tick    = 0;
@@ -206,7 +207,7 @@ bool PlayerGui::update_state(PadState &pad, HidTouchScreenState &touch) {
 
     if (down & (HidNpadButton_StickL | HidNpadButton_StickR)) {
         this->lmpv.command_async("screenshot", "subtitles");
-        this->set_show_string(500ms, "Saving screenshot");
+        this->set_show_string(500ms, i18n::tr("Saving screenshot"));
     }
 
     if (!ImGui::IsKeyDown(ImGuiKey_GamepadDpadDown) && !ImGui::IsKeyDown(ImGuiKey_GamepadDpadUp)) {
@@ -260,7 +261,7 @@ bool PlayerGui::update_state(PadState &pad, HidTouchScreenState &touch) {
             rc = lblSetCurrentBrightnessSetting(brightness);
 
         if (R_SUCCEEDED(rc))
-            this->set_show_string(1s, "Brightness: %.0f%%", brightness * 100.0f);
+            this->set_show_string(1s, i18n::tr("Brightness: %.0f%%"), brightness * 100.0f);
         else
             std::printf("Failed to set brightness: %#x\n", rc);
 
@@ -282,7 +283,7 @@ bool PlayerGui::update_state(PadState &pad, HidTouchScreenState &touch) {
             rc = audctlSetTargetVolume(target, vol);
 
         if (R_SUCCEEDED(rc))
-            this->set_show_string(1s, "Volume: %d%%", vol * 100 / 15);
+            this->set_show_string(1s, i18n::tr("Volume: %d%%"), vol * 100 / 15);
         else
             std::printf("Failed to set volume: %#x\n", rc);
 
@@ -367,7 +368,7 @@ bool PlayerGui::update_state(PadState &pad, HidTouchScreenState &touch) {
                     brightness = std::clamp(brightness, 0.0f, 1.0f);
 
                     if (auto rc = lblSetCurrentBrightnessSetting(brightness); R_SUCCEEDED(rc))
-                        this->set_show_string(1s, "Brightness: %.0f%%", brightness * 100.0f);
+                        this->set_show_string(1s, i18n::tr("Brightness: %.0f%%"), brightness * 100.0f);
                     else
                         std::printf("Failed to set brightness: %#x\n", rc);
                 }
@@ -378,7 +379,7 @@ bool PlayerGui::update_state(PadState &pad, HidTouchScreenState &touch) {
                     vol = std::clamp(vol, 0, 15);
 
                     if (auto rc = audctlSetTargetVolume(this->touch_setting_start.audio_target, vol); R_SUCCEEDED(rc))
-                        this->set_show_string(1s, "Volume: %d%%", vol * 100 / 15);
+                        this->set_show_string(1s, i18n::tr("Volume: %d%%"), vol * 100 / 15);
                     else
                         std::printf("Failed to set volume: %#x\n", rc);
                 }
@@ -1014,7 +1015,7 @@ void PlayerMenu::render() {
     auto    &imio = ImGui::GetIO();
     auto &imstyle = ImGui::GetStyle();
 
-    ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+    ImGui::Begin(i18n::label("Menu"), nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::SetWindowSize(this->screen_rel_vec<ImVec2>(PlayerMenu::MenuWidth, PlayerMenu::MenuHeight));
     ImGui::SetWindowPos (this->screen_rel_vec<ImVec2>(PlayerMenu::MenuPosX,  PlayerMenu::MenuPosY));
@@ -1025,15 +1026,15 @@ void PlayerMenu::render() {
         ImGuiTabBarFlags_NoTabListScrollingButtons | ImGuiTabBarFlags_NoTooltip);
     SW_SCOPEGUARD([] { ImGui::EndTabBar(); });
 
-    if (ImGui::BeginTabItem("Video", nullptr, ImGuiTabItemFlags_NoReorder)) {
+    if (ImGui::BeginTabItem(i18n::label("Video"), nullptr, ImGuiTabItemFlags_NoReorder)) {
         SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
 
-        ImGui::SeparatorText("Track");
+        ImGui::SeparatorText(i18n::tr("Track"));
         this->video_tracklist.run(this->lmpv);
 
-        ImGui::SeparatorText("Quality");
+        ImGui::SeparatorText(i18n::tr("Quality"));
 
-        if (ImGui::BeginCombo("Profile", "Choose profile")) {
+        if (ImGui::BeginCombo(i18n::label("Profile"), i18n::tr("Choose profile"))) {
             SW_SCOPEGUARD([] { ImGui::EndCombo(); });
 
             for (auto &profile: this->profile_list) {
@@ -1044,11 +1045,11 @@ void PlayerMenu::render() {
 
         this->hdr_peak_checkbox.run(this->lmpv);
 
-        if (ImGui::Button("Advanced##videoquality"))
+        if (ImGui::Button(i18n::label("Advanced##videoquality")))
             this->cur_subwindow = (this->cur_subwindow != SubwindowType::VideoQuality) ?
                 SubwindowType::VideoQuality : SubwindowType::None;
 
-        ImGui::SeparatorText("Window");
+        ImGui::SeparatorText(i18n::tr("Window"));
 
         constexpr static std::array scaling_opts = {
             "Stretch to fit"sv,
@@ -1058,7 +1059,7 @@ void PlayerMenu::render() {
         };
 
         std::size_t scaling_opt = (this->keepaspect << 1) | (this->video_unscaled << 0);
-        if (ImGui::BeginCombo("Scaling", scaling_opts[scaling_opt].data())) {
+        if (ImGui::BeginCombo(i18n::label("Scaling"), i18n::tr(scaling_opts[scaling_opt].data()))) {
             SW_SCOPEGUARD([] { ImGui::EndCombo(); });
 
             for (std::size_t i = 0; i < scaling_opts.size(); ++i) {
@@ -1066,7 +1067,7 @@ void PlayerMenu::render() {
                     continue;
 
                 auto is_selected = scaling_opt == i;
-                if (ImGui::Selectable(scaling_opts[i].data(), is_selected)) {
+                if (ImGui::Selectable(i18n::label(scaling_opts[i].data()), is_selected)) {
                     this->lmpv.set_property_async("video-unscaled", (i & (1 << 0)) ? "yes" : "no");
                     this->lmpv.set_property_async("keepaspect",     (i & (1 << 1)) ? "yes" : "no");
                 }
@@ -1078,65 +1079,65 @@ void PlayerMenu::render() {
 
         this->aspect_ratio_combo.run(this->lmpv);
 
-        ImGui::SeparatorText("Other");
+        ImGui::SeparatorText(i18n::tr("Other"));
 
-        if (ImGui::Button("Zoom/Position"))
+        if (ImGui::Button(i18n::label("Zoom/Position")))
             this->cur_subwindow = (this->cur_subwindow != SubwindowType::ZoomPos) ?
                 SubwindowType::ZoomPos : SubwindowType::None;
 
         ImGui::SameLine();
-        if (ImGui::Button("Color equalizer"))
+        if (ImGui::Button(i18n::label("Color equalizer")))
             this->cur_subwindow = (this->cur_subwindow != SubwindowType::ColorEqualizer) ?
                 SubwindowType::ColorEqualizer : SubwindowType::None;
     }
 
-    if (ImGui::BeginTabItem("Audio", nullptr, ImGuiTabItemFlags_NoReorder)) {
+    if (ImGui::BeginTabItem(i18n::label("Audio"), nullptr, ImGuiTabItemFlags_NoReorder)) {
         SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
 
-        ImGui::SeparatorText("Track");
+        ImGui::SeparatorText(i18n::tr("Track"));
         this->audio_tracklist.run(this->lmpv);
 
-        ImGui::SeparatorText("Channel mixing");
+        ImGui::SeparatorText(i18n::tr("Channel mixing"));
         this->downmix_combo.run(this->lmpv);
 
-        ImGui::SeparatorText("Volume");
+        ImGui::SeparatorText(i18n::tr("Volume"));
         this->volume_slider.run(this->lmpv, "Reset##volume");
         this->mute_checkbox.run(this->lmpv);
 
-        ImGui::SeparatorText("Delay");
+        ImGui::SeparatorText(i18n::tr("Delay"));
         this->audio_delay_slider.run(this->lmpv, "Reset##audiodelay");
     }
 
-    if (ImGui::BeginTabItem("Subtitles", nullptr, ImGuiTabItemFlags_NoReorder)) {
+    if (ImGui::BeginTabItem(i18n::label("Subtitles"), nullptr, ImGuiTabItemFlags_NoReorder)) {
         SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
 
-        ImGui::SeparatorText("Track");
+        ImGui::SeparatorText(i18n::tr("Track"));
         this->sub_tracklist.run(this->lmpv);
 
-        if (ImGui::Button("Load external file"))
+        if (ImGui::Button(i18n::label("Load external file")))
             this->cur_subwindow = (this->cur_subwindow != SubwindowType::SubtitleFilepicker) ?
                 SubwindowType::SubtitleFilepicker : SubwindowType::None;
 
-        ImGui::SeparatorText("Delay");
+        ImGui::SeparatorText(i18n::tr("Delay"));
         this->sub_delay_slider.run(this->lmpv, "Reset##subdelay");
 
-        ImGui::SeparatorText("FPS");
+        ImGui::SeparatorText(i18n::tr("FPS"));
         this->sub_fps_combo.run(this->lmpv);
 
         // TODO: subtitle speed?
 
-        ImGui::SeparatorText("Size/position");
+        ImGui::SeparatorText(i18n::tr("Size/position"));
         this->sub_scale_slider.run(this->lmpv, "Reset##subscale");
         this->sub_pos_slider  .run(this->lmpv, "Reset##subpos");
 
-        ImGui::SeparatorText("Style");
+        ImGui::SeparatorText(i18n::tr("Style"));
         this->embedded_fonts_checkbox.run(this->lmpv);
     }
 
-    if (ImGui::BeginTabItem("Misc")) {
+    if (ImGui::BeginTabItem(i18n::label("Misc"))) {
         SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
 
-        ImGui::SeparatorText("Playlist");
+        ImGui::SeparatorText(i18n::tr("Playlist"));
 
         utils::StaticString32 id_buffer;
         auto make_id = [&id_buffer](std::size_t i, std::string_view s) {
@@ -1198,21 +1199,21 @@ void PlayerMenu::render() {
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("Clear"))
+        if (ImGui::Button(i18n::label("Clear")))
             this->lmpv.command_async("playlist-clear");
 
-        ImGui::SeparatorText("Speed");
+        ImGui::SeparatorText(i18n::tr("Speed"));
         this->speed_slider.run(this->lmpv, "Reset##speed");
 
-        ImGui::SeparatorText("Demuxer cache");
+        ImGui::SeparatorText(i18n::tr("Demuxer cache"));
         this->cache_combo.run(this->lmpv);
 
-        ImGui::SeparatorText("Log level");
+        ImGui::SeparatorText(i18n::tr("Log level"));
         this->log_level_combo.run(this->lmpv);
 
-        ImGui::SeparatorText("Other");
+        ImGui::SeparatorText(i18n::tr("Other"));
         ImGui::BeginGroup();
-        ImGui::Checkbox("Fast presentation", &this->context.use_fast_presentation);
+        ImGui::Checkbox(i18n::label("Fast presentation"), &this->context.use_fast_presentation);
 
         ImGui::SameLine();
         ImGui::TextDisabled("\ue152"); // Question mark character in nintendo's extended font
@@ -1221,15 +1222,15 @@ void PlayerMenu::render() {
         if (ImGui::IsItemFocused() || ImGui::IsItemHovered()) {
             ImGui::BeginTooltip();
             ImGui::PushTextWrapPos(ImGui::GetFontSize() * 20.0f);
-            ImGui::TextUnformatted("Puts mpv in charge of frame presentation, "
+            ImGui::TextUnformatted(i18n::tr("Puts mpv in charge of frame presentation, "
                 "resulting in more accurate timings and reduced GPU usage, "
-                "however a black frame will be shown whenever the UI appears");
+                "however a black frame will be shown whenever the UI appears"));
             ImGui::PopTextWrapPos();
             ImGui::EndTooltip();
         }
 
-        ImGui::Checkbox("Disable screensaver",        &this->context.disable_screensaver);
-        ImGui::Checkbox("Override screenshot button", &this->context.override_screenshot_button);
+        ImGui::Checkbox(i18n::label("Disable screensaver"),        &this->context.disable_screensaver);
+        ImGui::Checkbox(i18n::label("Override screenshot button"), &this->context.override_screenshot_button);
     }
 
     auto bullet_wrapped = [](std::string_view fmt, auto &&...args) {
@@ -1237,72 +1238,72 @@ void PlayerMenu::render() {
         ImGui::TextWrapped(fmt.data(), std::forward<decltype(args)>(args)...);
     };
 
-    if (ImGui::BeginTabItem("Stats")) {
+    if (ImGui::BeginTabItem(i18n::label("Stats"))) {
         SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
 
         ImGui::BeginTabBar("##statstabbar", ImGuiTabBarFlags_NoCloseWithMiddleMouseButton |
             ImGuiTabBarFlags_NoTabListScrollingButtons | ImGuiTabBarFlags_NoTooltip);
         SW_SCOPEGUARD([] { ImGui::EndTabBar(); });
 
-        if (ImGui::BeginTabItem("Info")) {
+        if (ImGui::BeginTabItem(i18n::label("Info"))) {
             SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
 
             ImGui::SetWindowFontScale(0.68 * this->scale_factor());
             SW_SCOPEGUARD([&] { ImGui::SetWindowFontScale(this->scale_factor()); });
 
-            ImGui::SeparatorText("Source");
-            bullet_wrapped("Format: %s", this->file_format);
+            ImGui::SeparatorText(i18n::tr("Source"));
+            bullet_wrapped(i18n::tr("Format: %s"), this->file_format);
 
-            ImGui::SeparatorText("Video");
-            bullet_wrapped("Codec: %s", this->video_codec);
+            ImGui::SeparatorText(i18n::tr("Video"));
+            bullet_wrapped(i18n::tr("Codec: %s"), this->video_codec);
             if (this->hwdec_current)
-                bullet_wrapped("hwdec: %s", this->hwdec_current);
-            bullet_wrapped("Framerate: %.3fHz (specified) %.3fHz (estimated)",
+                bullet_wrapped(i18n::tr("hwdec: %s"), this->hwdec_current);
+            bullet_wrapped(i18n::tr("Framerate: %.3fHz (specified) %.3fHz (estimated)"),
                 this->container_specified_fps, this->container_estimated_fps);
-            bullet_wrapped("A/V desync: %+.3fs", this->avsync);
-            bullet_wrapped("Dropped: %ld (VO) %ld (decoder)", this->dropped_vo_frames, this->dropped_dec_frames);
-            bullet_wrapped("Size: %dx%d, scaled: %dx%d", this->video_width, this->video_height,
+            bullet_wrapped(i18n::tr("A/V desync: %+.3fs"), this->avsync);
+            bullet_wrapped(i18n::tr("Dropped: %ld (VO) %ld (decoder)"), this->dropped_vo_frames, this->dropped_dec_frames);
+            bullet_wrapped(i18n::tr("Size: %dx%d, scaled: %dx%d"), this->video_width, this->video_height,
                 this->video_width_scaled, this->video_height_scaled);
             if (!this->video_hw_pixfmt.empty())
-                bullet_wrapped("Pixel format: %s [%s]",
+                bullet_wrapped(i18n::tr("Pixel format: %s [%s]"),
                     this->video_pixfmt.c_str(), this->video_hw_pixfmt.c_str());
             else
-                bullet_wrapped("Pixel format: %s", this->video_pixfmt.c_str());
-            bullet_wrapped("Colorspace: %s, range: %s, gamma: %s", this->video_colorspace.c_str(),
+                bullet_wrapped(i18n::tr("Pixel format: %s"), this->video_pixfmt.c_str());
+            bullet_wrapped(i18n::tr("Colorspace: %s, range: %s, gamma: %s"), this->video_colorspace.c_str(),
                 this->video_color_range.c_str(), this->video_gamma.c_str());
-            bullet_wrapped("Bitrate: %.2fkbps\n", float(this->video_bitrate) / 1000.0f);
+            bullet_wrapped(i18n::tr("Bitrate: %.2fkbps\n"), float(this->video_bitrate) / 1000.0f);
 
-            ImGui::SeparatorText("Audio");
-            bullet_wrapped("Codec: %s", this->audio_codec);
-            bullet_wrapped("Layout: %s (%d channels)", this->audio_layout.c_str(), this->audio_num_channels);
-            bullet_wrapped("Format: %s", this->audio_format.c_str());
-            bullet_wrapped("Samplerate: %dHz", this->audio_samplerate);
-            bullet_wrapped("Bitrate: %.2fkbps\n", float(this->audio_bitrate) / 1000.0f);
+            ImGui::SeparatorText(i18n::tr("Audio"));
+            bullet_wrapped(i18n::tr("Codec: %s"), this->audio_codec);
+            bullet_wrapped(i18n::tr("Layout: %s (%d channels)"), this->audio_layout.c_str(), this->audio_num_channels);
+            bullet_wrapped(i18n::tr("Format: %s"), this->audio_format.c_str());
+            bullet_wrapped(i18n::tr("Samplerate: %dHz"), this->audio_samplerate);
+            bullet_wrapped(i18n::tr("Bitrate: %.2fkbps\n"), float(this->audio_bitrate) / 1000.0f);
 
-            ImGui::SeparatorText("Cache");
-            bullet_wrapped("Packet queue: %02u:%02u:%02u\u2012%02u:%02u:%02u (%02u:%02u:%02u)",
+            ImGui::SeparatorText(i18n::tr("Cache"));
+            bullet_wrapped(i18n::tr("Packet queue: %02u:%02u:%02u\u2012%02u:%02u:%02u (%02u:%02u:%02u)"),
                 FORMAT_TIME(std::uint32_t(this->demuxer_cache_begin)), FORMAT_TIME(std::uint32_t(this->demuxer_cache_end)),
                 FORMAT_TIME(std::uint32_t(this->demuxer_cache_end - this->demuxer_cache_begin)));
-            bullet_wrapped("RAM used: %.02fMiB (%.2fMiB forward)", double(this->demuxer_cached_bytes)/0x100000,
+            bullet_wrapped(i18n::tr("RAM used: %.02fMiB (%.2fMiB forward)"), double(this->demuxer_cached_bytes)/0x100000,
                 double(this->demuxer_forward_bytes)/0x100000);
-            bullet_wrapped("Speed: %.2fMiB/s", this->demuxer_cache_speed/0x100000);
+            bullet_wrapped(i18n::tr("Speed: %.2fMiB/s"), this->demuxer_cache_speed/0x100000);
 
-            ImGui::SeparatorText("Interface");
-            bullet_wrapped("FPS: %.2fHz, frame time %.2fms", imio.Framerate, imio.DeltaTime * 1000.0f);
-            bullet_wrapped("Vertices: %d", imio.MetricsRenderVertices);
-            bullet_wrapped("Indices: %d", imio.MetricsRenderIndices);
+            ImGui::SeparatorText(i18n::tr("Interface"));
+            bullet_wrapped(i18n::tr("FPS: %.2fHz, frame time %.2fms"), imio.Framerate, imio.DeltaTime * 1000.0f);
+            bullet_wrapped(i18n::tr("Vertices: %d"), imio.MetricsRenderVertices);
+            bullet_wrapped(i18n::tr("Indices: %d"), imio.MetricsRenderIndices);
         }
 
-        if (ImGui::BeginTabItem("Passes")) {
+        if (ImGui::BeginTabItem(i18n::label("Passes"))) {
             SW_SCOPEGUARD([] { ImGui::EndTabItem(); });
 
-            ImGui::RadioButton("Graphs",    &this->perf_plot_is_pie, false); ImGui::SameLine();
-            ImGui::RadioButton("Pie chart", &this->perf_plot_is_pie, true);
+            ImGui::RadioButton(i18n::label("Graphs"),    &this->perf_plot_is_pie, false); ImGui::SameLine();
+            ImGui::RadioButton(i18n::label("Pie chart"), &this->perf_plot_is_pie, true);
 
             if (this->perf_plot_is_pie) {
-                ImGui::RadioButton("Average", &this->perf_plot_pie_type, 0); ImGui::SameLine();
-                ImGui::RadioButton("Peak",    &this->perf_plot_pie_type, 1); ImGui::SameLine();
-                ImGui::RadioButton("Last",    &this->perf_plot_pie_type, 2);
+                ImGui::RadioButton(i18n::label("Average"), &this->perf_plot_pie_type, 0); ImGui::SameLine();
+                ImGui::RadioButton(i18n::label("Peak"),    &this->perf_plot_pie_type, 1); ImGui::SameLine();
+                ImGui::RadioButton(i18n::label("Last"),    &this->perf_plot_pie_type, 2);
             }
 
             ImGui::SetWindowFontScale(0.5 * this->scale_factor());
@@ -1374,7 +1375,7 @@ void PlayerMenu::render() {
                 break;
         }
 
-        ImGui::Begin(title.data(), nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
+        ImGui::Begin(i18n::label(title.data()), nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::SetWindowFontScale(this->scale_factor());
         SW_SCOPEGUARD([] { ImGui::End(); });
@@ -1400,7 +1401,7 @@ void PlayerMenu::render() {
             for (auto &prop: options)
                 prop.run(this->lmpv);
 
-            if (ImGui::Button("Reset")) {
+            if (ImGui::Button(i18n::label("Reset"))) {
                 for (auto &prop: options)
                     prop.reset(this->lmpv);
             }
@@ -1409,7 +1410,7 @@ void PlayerMenu::render() {
         auto run_reset_button = [this, &imstyle]() {
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetContentRegionAvail().y -
                 ImGui::GetFontSize() - imstyle.ItemSpacing.y);
-            if (ImGui::Button("Return"))
+            if (ImGui::Button(i18n::label("Return")))
                 this->cur_subwindow = SubwindowType::None;
         };
 
@@ -1418,7 +1419,7 @@ void PlayerMenu::render() {
 
             ImGui::SameLine();
             ImGui::SetCursorPos(ImVec2(imstyle.ItemSpacing.x, ImGui::GetCursorPosY() - imstyle.ItemSpacing.y));
-            if (ImGui::Button("Return"))
+            if (ImGui::Button(i18n::label("Return")))
                 this->cur_subwindow = (type == SubwindowType::ShaderFilepicker) ?
                     SubwindowType::VideoQuality : SubwindowType::None;
         };
@@ -1432,9 +1433,9 @@ void PlayerMenu::render() {
                 std::string_view label, std::string_view strength_param,
                 bool &has_filter, float &strength, int &dimensions)
         {
-            utils::StaticString32 id_buffer;
+            utils::StaticString64 id_buffer;
             auto make_id = [&id_buffer](std::string_view l, std::string_view s) {
-                std::snprintf(id_buffer.data(), id_buffer.capacity(), "%s##%s", s.data(), l.data());
+                std::snprintf(id_buffer.data(), id_buffer.capacity(), "%s###%s##%s", i18n::tr(s.data()), s.data(), l.data());
                 return id_buffer.data();
             };
 
@@ -1484,7 +1485,7 @@ void PlayerMenu::render() {
 
         switch (this->cur_subwindow) {
             case SubwindowType::VideoQuality:
-                if (ImGui::Button("Load external shader"))
+                if (ImGui::Button(i18n::label("Load external shader")))
                     this->cur_subwindow = (this->cur_subwindow != SubwindowType::ShaderFilepicker) ?
                         SubwindowType::ShaderFilepicker : SubwindowType::None;
 
@@ -1496,7 +1497,7 @@ void PlayerMenu::render() {
 
                 this->deinterlace_checkbox.run(this->lmpv);
 
-                ImGui::SeparatorText("Hardware filters");
+                ImGui::SeparatorText(i18n::tr("Hardware filters"));
 
                 run_vic_spatialfilter("Sharpness", "sharpness_nvtegra", "vicsharp", "sharpness",
                     has_sharpness_filter, sharpness_value, sharpness_dimensions);
@@ -1510,7 +1511,7 @@ void PlayerMenu::render() {
                     std::pair{"Bob"sv,   "bob"sv},
                 };
 
-                if (ImGui::Checkbox("Deinterlacing", &has_hw_deinterlace)) {
+                if (ImGui::Checkbox(i18n::label("Deinterlacing"), &has_hw_deinterlace)) {
                     if (has_hw_deinterlace) {
                         utils::StaticString<128> cmd;
                         std::snprintf(cmd.data(), cmd.capacity(),
@@ -1530,12 +1531,12 @@ void PlayerMenu::render() {
                     ImGui::Indent();
                     SW_SCOPEGUARD([] { ImGui::Unindent(); });
 
-                    if (ImGui::BeginCombo("Mode", deint_mode_options[this->hw_deinterlace_mode].first.data())) {
+                    if (ImGui::BeginCombo(i18n::label("Mode"), i18n::tr(deint_mode_options[this->hw_deinterlace_mode].first.data()))) {
                         SW_SCOPEGUARD([] { ImGui::EndCombo(); });
 
                         for (std::size_t i = 0; i < deint_mode_options.size(); ++i) {
                             bool is_selected = std::size_t(this->hw_deinterlace_mode) == i;
-                            if (ImGui::Selectable(deint_mode_options[i].first.data(), is_selected)) {
+                            if (ImGui::Selectable(i18n::label(deint_mode_options[i].first.data()), is_selected)) {
                                 this->hw_deinterlace_mode = i;
 
                                 this->lmpv.command_async("vf-command", hw_deint_filter_name.data(), "mode",
@@ -1712,7 +1713,7 @@ void Console::render() {
         return;
     }
 
-    ImGui::Begin("Console", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+    ImGui::Begin(i18n::label("Console"), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::SetWindowSize(this->screen_rel_vec<ImVec2>(Console::ConsoleWidth, Console::ConsoleHeight));
     ImGui::SetWindowPos (this->screen_rel_vec<ImVec2>(Console::ConsolePosX,  Console::ConsolePosY));
@@ -1765,11 +1766,11 @@ void Console::render() {
     }
 
     ImGui::SameLine(0.0f, this->screen_rel_width(0.23f));
-    if (ImGui::Button("Clear"))
+    if (ImGui::Button(i18n::label("Clear")))
         this->logs.clear();
 
     ImGui::SameLine();
-    ImGui::Selectable("Freeze", &this->is_frozen, 0, ImVec2(this->screen_rel_width(0.051f), 0));
+    ImGui::Selectable(i18n::label("Freeze"), &this->is_frozen, 0, ImVec2(this->screen_rel_width(0.051f), 0));
 
     {
         ImGui::SetWindowFontScale(0.5 * this->scale_factor());

@@ -69,6 +69,7 @@ NfsFs::NfsFs(Context &context, std::string_view name, std::string_view mount_nam
         .fstat_r      = NfsFs::nfs_fstat,
 
         .stat_r       = NfsFs::nfs_stat,
+        .unlink_r     = NfsFs::nfs_unlink,
         .chdir_r      = NfsFs::nfs_chdir,
 
         .dirStateSize = sizeof(NfsFsDir),
@@ -253,6 +254,35 @@ int NfsFs::nfs_lstat(struct _reent *r, const char *file, struct stat *st) {
     }
 
     nfs_translate_stat(buf, st);
+    return 0;
+}
+
+int NfsFs::nfs_unlink(struct _reent *r, const char *name) {
+    auto *priv = static_cast<NfsFs *>(r->deviceData);
+    if (!name || !valid_delete_path(name, priv->mount_name)) {
+        __errno_r(r) = EINVAL;
+        return -1;
+    }
+
+    auto lock = std::scoped_lock(priv->session_mutex);
+    if (!priv->is_connected) {
+        __errno_r(r) = ENOTCONN;
+        return -1;
+    }
+    auto internal_path = priv->translate_path(name);
+    struct nfs_stat_64 status;
+    if (auto result = ::nfs_lstat64(priv->nfs_ctx, internal_path.data(), &status); result < 0) {
+        __errno_r(r) = -result;
+        return -1;
+    }
+    if (!S_ISREG(status.nfs_mode)) {
+        __errno_r(r) = EINVAL;
+        return -1;
+    }
+    if (auto result = ::nfs_unlink(priv->nfs_ctx, internal_path.data()); result < 0) {
+        __errno_r(r) = -result;
+        return -1;
+    }
     return 0;
 }
 

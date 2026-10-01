@@ -49,6 +49,7 @@ class SftpFs final: public NetworkFilesystem {
         static off_t     sftp_seek    (struct _reent *r, void *fd, off_t pos, int dir);
         static int       sftp_fstat   (struct _reent *r, void *fd, struct stat *st);
         static int       sftp_stat    (struct _reent *r, const char *file, struct stat *st);
+        static int       sftp_unlink  (struct _reent *r, const char *name);
         static int       sftp_chdir   (struct _reent *r, const char *name);
         static DIR_ITER *sftp_diropen (struct _reent *r, DIR_ITER *dirState, const char *path);
         static int       sftp_dirreset(struct _reent *r, DIR_ITER *dirState);

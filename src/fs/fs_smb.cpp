@@ -78,6 +78,7 @@ SmbFs::SmbFs(Context &context, std::string_view name, std::string_view mount_nam
         .fstat_r      = SmbFs::smb_fstat,
 
         .stat_r       = SmbFs::smb_stat,
+        .unlink_r     = SmbFs::smb_unlink,
         .chdir_r      = SmbFs::smb_chdir,
 
         .dirStateSize = sizeof(SmbFsDir),
@@ -273,6 +274,36 @@ int SmbFs::smb_lstat(struct _reent *r, const char *file, struct stat *st) {
     }
 
     smb2_translate_stat(buf, st);
+    return 0;
+}
+
+int SmbFs::smb_unlink(struct _reent *r, const char *name) {
+    auto *priv = static_cast<SmbFs *>(r->deviceData);
+    if (!name || !valid_delete_path(name, priv->mount_name)) {
+        __errno_r(r) = EINVAL;
+        return -1;
+    }
+
+    auto lock = std::scoped_lock(priv->session_mutex);
+    if (!priv->is_connected) {
+        __errno_r(r) = ENOTCONN;
+        return -1;
+    }
+    auto internal_path = priv->translate_path(name);
+    struct smb2_stat_64 status;
+    if (auto result = ::smb2_stat(priv->smb_ctx, internal_path.c_str() + 1, &status); result < 0) {
+        __errno_r(r) = -result;
+        return -1;
+    }
+    if (status.smb2_type != SMB2_TYPE_FILE) {
+        __errno_r(r) = EINVAL;
+        return -1;
+    }
+    auto result = ::smb2_unlink(priv->smb_ctx, internal_path.c_str() + 1);
+    if (result < 0) {
+        __errno_r(r) = -result;
+        return -1;
+    }
     return 0;
 }
 

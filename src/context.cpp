@@ -57,6 +57,8 @@ int Context::read_from_file() {
                 self->quit_to_home_menu     = v != "no";
             else if (n == "override-screenshot-button")
                 self->override_screenshot_button = v != "no";
+            else if (n == "language")
+                self->language = i18n::parse_language(v);
             else if (n == "history-size")
                 self->history_size = std::atoi(v.data());
         } else if (s.find("network") != std::string_view::npos) {
@@ -100,6 +102,8 @@ int Context::read_from_file() {
         return -1;
     }
 
+    i18n::current_language = this->language;
+
     return 0;
 }
 
@@ -123,6 +127,7 @@ int Context::write_to_file() {
     TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "disable-screensaver",        this->disable_screensaver        ? "yes" : "no"));
     TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "quit-to-home-menu",          this->quit_to_home_menu          ? "yes" : "no"));
     TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "override-screenshot-button", this->override_screenshot_button ? "yes" : "no"));
+    TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "language",                i18n::language_code(this->language)));
     TRY_WRITE(std::fprintf(fp, "%s = %ld\n", "history-size",               this->history_size));
 
     for (auto &info: this->network_infos) {

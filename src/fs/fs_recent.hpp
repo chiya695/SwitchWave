@@ -38,6 +38,14 @@ class RecentFs final: public Filesystem {
             this->recent_files.clear();
         }
 
+        int clear_and_save() {
+            if (auto error = clear_recent_history_file(this->history_path.c_str()))
+                return error;
+            this->clear();
+            this->context.recent_history_changed = true;
+            return 0;
+        }
+
         int write_to_file() const;
 
     private:

@@ -31,6 +31,7 @@ class Explorer: public Widget {
             recent_texture, sd_texture, usb_texture, network_texture;
 
         bool is_focused = false;
+        bool allow_file_deletion = false;
 
         fs::Path path;
         fs::Path selection;
@@ -41,6 +42,15 @@ class Explorer: public Widget {
         bool is_initial_scan     = true;
         bool need_directory_scan = true;
         bool want_focus_reset    = false;
+
+    private:
+        fs::Path pending_delete_path;
+        std::shared_ptr<fs::Filesystem> pending_delete_fs;
+        std::shared_ptr<fs::Filesystem> pending_history_fs;
+        int delete_error = 0;
+        bool deleted_file = false;
+        int history_error = 0;
+        bool cleared_history = false;
 };
 
 } // namespace sw::ui
