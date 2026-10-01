@@ -476,7 +476,7 @@ void ConfigEditor::install_swkbd_callbacks(SwkbdInline *swkbd) {
         SW_SCOPEGUARD([] { s_this->reset_swkbd_state(ImGui::nx::getSwkbd()); });
 
         s_this->cursor_pos = utf8::move(s_this->config_text, s_this->cursor_pos,
-            arg->cursorPos - ConfigEditor::swkbd_cursor_reset);
+            arg->cursorPos - static_cast<int>(ConfigEditor::swkbd_cursor_reset));
         s_this->want_cursor_update = true;
     });
 

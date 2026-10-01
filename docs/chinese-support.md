@@ -74,7 +74,7 @@
 
 - 本地独立回归程序通过 GCC 的 AddressSanitizer/UndefinedBehaviorSanitizer 检查，涵盖中英混排、4 字节字符/代理对、前后删除、光标钳制、非法 UTF-8、空格、多字提交、无变化和容量拒绝。项目原来没有测试框架，因此没有为本次修改强行增加框架。
 - Switch 的真实 `aarch64-none-elf-g++` 已通过 `imgui_nx.cpp` 语法检查。完整应用检查受到本地未安装 USB、mpv、FFmpeg 生成头和其他 portlibs 的限制，不能把它等同于完整 NRO 构建成功。
-- 本地没有 Docker，完整依赖编译交给功能分支的 GitHub Actions。没有通过实机验收前，不宣称所有汉字、字幕和输入法情形均已验证。
+- 本地没有 Docker，功能分支保留上游的 GitHub Actions 构建流程。没有通过完整构建和实机验收前，不宣称所有汉字、字幕和输入法情形均已验证。
 - 补充平面的生僻汉字、emoji、字体本身缺字、上游已经写成字面 `?` 的内容不保证修复。
 - 现有网络协议的非 UTF-8 文件名/目录页编码不做盲目猜测。SMB 转码仍由 libsmb2 负责，NFS/SFTP 应由服务端提供 UTF-8；不能仅凭字形缺失判定原文件名应为 GBK。
 - 发现的一些既有通用健壮性问题，例如 `read_whole_file` 对空文件指针调用 fclose 的风险，与中文任务无直接关系，没有顺手修改。
