@@ -1,6 +1,8 @@
 # <img src="https://github.com/user-attachments/assets/b81b9503-948e-4cba-b0a1-f5f809588aad" width="48"> SwitchWave
 A hardware-accelerated media player for the Nintendo Switch, built on mpv and FFmpeg.
 
+中文说明：[README.zh-CN.md](README.zh-CN.md)
+
 ## Features
 - Custom hardware acceleration backend for FFmpeg, with dynamic frequency scaling. The following codecs can be decoded:
     - MPEG1/2/4
