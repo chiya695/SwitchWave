@@ -32,7 +32,9 @@ RUN wget -q https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz -O /tmp/li
     && source ${DEVKITPRO}/switchvars.sh \
     && ./configure --prefix="${PORTLIBS_PREFIX}" --host=aarch64-none-elf \
         --disable-shared --enable-static --disable-nls \
-    && make -j2 && make install \
+    && make lib/localcharset.h \
+    && make -C lib -j2 && make -C lib install \
+    && install -Dm644 include/iconv.h.inst "${PORTLIBS_PREFIX}/include/iconv.h" \
     && rm -rf /tmp/libiconv-1.18 /tmp/libiconv.tar.gz
 
 # Build libusbhsfs (GPL)

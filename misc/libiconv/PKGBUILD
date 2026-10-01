@@ -15,13 +15,15 @@ build() {
     source /opt/devkitpro/switchvars.sh
     ./configure --prefix="$PORTLIBS_PREFIX" --host=aarch64-none-elf \
         --disable-shared --enable-static --disable-nls
-    make
+    make lib/localcharset.h
+    make -C lib
 }
 
 package() {
     cd "libiconv-${pkgver}"
     source /opt/devkitpro/switchvars.sh
-    make DESTDIR="$pkgdir" install
+    make -C lib DESTDIR="$pkgdir" install
+    install -Dm644 include/iconv.h.inst "$pkgdir/$PORTLIBS_PREFIX/include/iconv.h"
     install -Dm644 COPYING.LIB "$pkgdir/$PORTLIBS_PREFIX/licenses/$pkgname/COPYING.LIB"
     install -Dm644 COPYING "$pkgdir/$PORTLIBS_PREFIX/licenses/$pkgname/COPYING"
 }
